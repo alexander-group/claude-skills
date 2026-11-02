@@ -1,4 +1,4 @@
 schema_version: "1.1"
 name: lscx-multiband-b-config
 expected_outcome: |
-  A single .optSB file for AT2023clx in catalog 25A-159 covering L, S, C and X bands in B configuration (L16f3B, S16f3B, C32f3Bmixalt-blank, X32f3DCB), one gain calibrator coded P/S at all four bands within about 15 degrees, a flux/bandpass block covering all four bands, requantizer scans for C and X, no reference pointing needed, total about 2 hours, and an LST start range.
+  At most two linked .optSB files for AT2023clx in catalog 25A-159 covering L, S, C and X in B configuration (L16f3B, S16f3B, C32f3Bmixalt-blank, X32f3DCB). One gain calibrator is coded P/S at all bands within about 15 degrees. There is a flux/bandpass block in all four bands and requantizer scans for C and X. Each SB is exactly 2 hours and sets a CW/CCW wrap. Weather is w=15,p=30 (X is the strictest band). The response explains any start LSTs that can't be covered.

@@ -20,7 +20,7 @@ Together they cover as much of the usable start LST as possible. Only one of the
 
 ## Tools
 
-Scripts live in `scripts/` next to this file. They need Python 3 with numpy, pandas and astropy, and read the bundled calibrator list in `data/`.
+Scripts live in `scripts/` next to this file. Run them by their full path from the user's working directory (e.g. `python <this skill's directory>/scripts/plan_sbs.py ...`), so the `.optSB` files land where the user wants them. The commands below write `scripts/` for short. They need Python 3.8+ with numpy, pandas and astropy, and read the bundled calibrator list in `data/`. If an import fails, tell the user to run `pip install -r <skill dir>/requirements.txt`.
 
 | script | does |
 |---|---|

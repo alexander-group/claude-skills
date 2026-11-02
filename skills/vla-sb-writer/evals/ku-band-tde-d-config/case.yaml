@@ -1,4 +1,6 @@
 schema_version: "1.1"
 name: ku-band-tde-d-config
 expected_outcome: |
-  A single .optSB file for AT2024zau in catalog 26A-445, Ku band in D configuration (Ku48f3DCB), with coordinates resolved from the TNS file, X-band reference pointing before Ku scans, requantizer scans, a gain calibrator within about 10 degrees coded P/S at Ku, a flux calibrator, total about 1.5 hours, and file name following the U_AT2024zau_e3 convention.
+  An early/late pair (or a single SB) of .optSB files for AT2024zau in catalog 26A-445, Ku band in D configuration (Ku48f3DCB). The coordinates are resolved from the TNS file. There is X-band reference pointing before the Ku scans, requantizer scans, and a gain calibrator within about 10 degrees coded P/S at Ku. Each SB is exactly 1.5 hours and sets a CW/CCW wrap. Weather is w=10,p=15. The split avoids the target's passage above 80 deg. File names are U_AT2024zau_e3[_early|_late].optSB.
+context:
+  scaffold_script: place-files.sh

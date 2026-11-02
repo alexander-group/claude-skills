@@ -1,0 +1,4 @@
+name,ra,ra_unit,dec,dec_unit,coord_bibcode,redshift,redshift_bibcode,discovery_date,discovery_date_format,discovery_date_bibcode,classification,classification_bibcode,optical_peak_date,optical_peak_date_format,optical_peak_bibcode
+AT2022hvp,09:54:45.240,hour,+55:26:25.37,deg,2022TNSTR1012....1M,0.12,2022TNSCR1214....1F,2459688.78,jd,2022TNSTR1012....1M,TDE,2022TNSCR1214....1F,,,
+AT2023clx,11:40:09.444,hour,+15:19:39.04,deg,2023TNSTR.421....1S,0.01107,2023ApJ...952L..35Z,2459997.71,jd,2023TNSTR.421....1S,TDE,2023TNSCR.438....1T,60000,mjd,
+AT2024zau,06:47:16.376,hour,+41:57:55.09,deg,2024TNSTR4135....1S,0.0815,2024TNSCR4427....1C,2460595.9514931,jd,2024TNSTR4135....1S,TDE,2024TNSCR4427....1C,,,

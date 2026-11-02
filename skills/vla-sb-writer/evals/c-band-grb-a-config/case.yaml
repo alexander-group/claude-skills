@@ -1,4 +1,4 @@
 schema_version: "1.1"
 name: c-band-grb-a-config
 expected_outcome: |
-  A single .optSB file in OPT text format (VERSION 7) for GRB261028A in source catalog 26B-123, C band in A configuration, using C32f2Amixalt-blank, with a nearby P/S-coded gain calibrator, a flux/bandpass calibrator, requantizer scans, total length about 1 hour, a sensible LST start range, and operator comments asking for ASAP observation.
+  One SB, or an early/late pair, of OPT text-format .optSB files (VERSION 7) for GRB261028A in source catalog 26B-123. They use C band in A configuration with C32f2Amixalt-blank, a nearby P/S-coded gain calibrator, a flux/bandpass calibrator and requantizer scans. Each SB is exactly 1 hour and sets a CW/CCW wrap. Weather is w=100,p=45 (the NRAO C-band limits). The LST start ranges together cover most of the target's usable window, and the comments ask for ASAP observation.

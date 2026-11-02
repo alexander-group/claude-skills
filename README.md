@@ -1,33 +1,52 @@
 # Alexander group Claude skills
 
-This repo holds Claude Code skills for the group's observing and analysis workflows.
+[Claude Code](https://claude.com/claude-code) skills for the group's observing and analysis workflows. A skill is a folder of instructions and scripts that Claude loads when a request matches it. You ask in plain language, e.g. *"write a Ku-band VLA SB for AT2024zau, D config, 1.5 h"*, and Claude follows the skill's workflow.
 
 | skill | what it does |
 |---|---|
-| [`vla-sb-writer`](skills/vla-sb-writer/SKILL.md) | Writes VLA continuum scheduling blocks (`.optSB`, OPT text format) for point-source targets. It chooses calibrators, resources, cycle times and weather limits, and writes linked early/late SBs to maximize LST coverage and time on source. |
+| [`vla-sb-writer`](skills/vla-sb-writer/) | Writes VLA continuum scheduling blocks (`.optSB`, OPT text format) for point-source targets. It picks calibrators, resources, cycle times and NRAO weather limits, and writes linked early/late SBs to maximize LST coverage and time on source. See its [README](skills/vla-sb-writer/README.md). |
 
 ## Install
 
+You need Claude Code, plus Python 3.8+ for the skills' scripts.
+
 ```bash
-git clone <this repo> ~/claude-skills
+git clone <this repo's URL> ~/claude-skills
+pip install -r ~/claude-skills/skills/vla-sb-writer/requirements.txt   # numpy, pandas, astropy
+
 mkdir -p ~/.claude/skills
 ln -s ~/claude-skills/skills/vla-sb-writer ~/.claude/skills/vla-sb-writer
 ```
 
-Restart Claude Code, then ask for an SB, e.g. *"load the skill for writing VLA SBs"*. Run `git pull` to get updates; the symlinks keep pointing at the latest version.
+Restart Claude Code. To check the skill is installed, ask "what skills do you have?" and look for `vla-sb-writer`. Then ask for an SB, e.g. *"load the skill for writing VLA SBs"*.
 
-Python requirements: `numpy`, `pandas`, `astropy`.
+Because the skill is a symlink, `git pull` in `~/claude-skills` updates it in place.
 
-### TNS lookup (optional)
-
-`vla-sb-writer` can look up a transient's coordinates by name. Point it at your local TNS CSV:
+**Per-user setting.** For TNS name lookup, point the skill at your local TNS CSV:
 
 ```bash
-export TNS_CATALOG=/path/to/tns_public_objects.csv   # put this in ~/.bashrc
+export TNS_CATALOG=/path/to/tns_public_objects.csv   # e.g. in ~/.bashrc
 ```
 
-It accepts any CSV with `name`, `ra` and `dec` (or `declination`) columns, in sexagesimal or degrees. The TNS public-objects dump and `radio-booms-and-beyond/targets/metadata.csv` both work. Without it, the skill asks for RA/Dec.
+The CSV needs `name`, `ra` and `dec` (or `declination`) columns, in sexagesimal or degrees; the TNS public-objects dump and `radio-booms-and-beyond/targets/metadata.csv` both work. Without it, the skill asks for RA/Dec.
 
-## Adding a skill
+## Layout
 
-Put it in `skills/<skill-name>/` with a `SKILL.md` (YAML front matter with `name` and `description`), plus any `scripts/`, `references/` and `data/` it needs. Keep each skill self-contained, with no absolute paths to anyone's home directory. Add a row to the table above.
+```
+skills/<skill-name>/
+├── SKILL.md          # instructions Claude reads (YAML front matter: name, description)
+├── README.md         # notes for humans
+├── requirements.txt  # Python dependencies of the scripts
+├── scripts/          # deterministic helpers the skill calls
+├── references/       # docs Claude reads on demand
+├── data/             # bundled data (e.g. the VLA calibrator list)
+└── evals/            # test cases (prompt + graders) for checking changes
+```
+
+Test outputs go in `skills/<skill-name>-workspace/`, which is git-ignored.
+
+## Contributing
+
+- **Adding a skill.** Create `skills/<name>/` with a `SKILL.md`. The `description` in its front matter decides when Claude uses the skill, so say what the skill does *and* when to use it. Keep the skill self-contained: bundle its data, use no absolute paths into anyone's home directory, and put per-user settings in environment variables. Add a row to the table above.
+- **Changing a skill.** Run its evals before and after; each skill's README says how. Note anything users need to know in the commit message.
+- **Building skills with Claude.** The `skill-creator` skill (`/skill-creator` in Claude Code) can draft a skill, run its test cases with and without the skill, and show the results in a review page.
