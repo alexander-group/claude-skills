@@ -27,7 +27,7 @@ SCHED-BLOCK; <name>; Dynamic; 1; <start date>,<end date>; <LST start>-<LST end>,
 | 8 | az | initial azimuth for slew estimates: -85 = CCW wrap, 445 = CW wrap, 180 = no preference |
 | 9 | el | initial elevation, 35.0 |
 | 10–11 | `N; N` | sun/night avoidance flags (unused) |
-| 12 | `w=10.0,p=15.0` | max wind (m/s) and API phase rms (deg). Group values are 7–15 and 10–30. Use stricter values (w=7,p=10) for K/Ka. |
+| 12 | `w=10.0,p=15.0` | max wind (m/s) and API phase rms (deg), taken from the NRAO table for the most demanding band (strategy.md). "Any" is entered as 100. |
 | 13 | comments | free text to the operators: science goal, urgency, and links between SBs ("observe only 1 of the linked SBs") |
 
 ## Loops

@@ -1,0 +1,4 @@
+schema_version: "1.1"
+name: ku-band-tde-d-config
+expected_outcome: |
+  A single .optSB file for AT2024zau in catalog 26A-445, Ku band in D configuration (Ku48f3DCB), with coordinates resolved from the TNS file, X-band reference pointing before Ku scans, requantizer scans, a gain calibrator within about 10 degrees coded P/S at Ku, a flux calibrator, total about 1.5 hours, and file name following the U_AT2024zau_e3 convention.

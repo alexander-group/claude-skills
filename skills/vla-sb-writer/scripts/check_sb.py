@@ -14,7 +14,7 @@ import re
 import sys
 
 sys.path.insert(0, os.path.dirname(os.path.abspath(__file__)))
-from build_sb import RESOURCES, THREE_BIT, HIGH, parse_total, fmt, DATA  # noqa: E402
+from build_sb import RESOURCES, THREE_BIT, HIGH, parse_total, fmt, DATA, weather_limits  # noqa: E402
 
 FIELDS = {'STD': 17, 'PTG': 14, 'IP': 14, 'LOOP-START': 6, 'LOOP-END': 2,
           'VERSION': 3, 'SRC-CAT': 3, 'HDWR-CAT': 3, 'SCHED-BLOCK': 15}
@@ -48,7 +48,7 @@ def check(path, args, cals):
     errs, warns = [], []
     E = lambda n, m: errs.append(f"line {n}: {m}")
     W = lambda n, m: warns.append(f"line {n}: {m}")
-    seen, config = set(), None
+    seen, config, weather = set(), None, None
     stack, counts = [[]], []        # for loop expansion
     try:
         lines = open(path, encoding='utf-8', errors='replace').read().splitlines()
@@ -84,8 +84,11 @@ def check(path, args, cals):
                 E(n, f"LST start range {p[5]!r} should look like 04:25:00-11:45:00,")
             elif not re.fullmatch(r'(\d\d:\d\d:\d\d-\d\d:\d\d:\d\d, ?)+', lst):
                 W(n, f"LST start range {p[5]!r} has no seconds; the OPT exports HH:MM:SS")
-            if not re.fullmatch(r'w=[\d.]+,p=[\d.]+', p[12]):
+            m = re.fullmatch(r'w=([\d.]+),p=([\d.]+)', p[12])
+            if not m:
                 E(n, f"weather field {p[12]!r} should look like w=10.0,p=15.0")
+            else:
+                weather = (n, float(m.group(1)), float(m.group(2)))
             if not re.fullmatch(r'\d{4}-\d\d-\d\d \d\d:\d\d:\d\d, ?\d{4}-\d\d-\d\d \d\d:\d\d:\d\d', p[4]):
                 E(n, f"date range {p[4]!r} malformed")
         elif kind == 'LOOP-START':
@@ -208,6 +211,18 @@ def check(path, args, cals):
         tg = {sc['src'] for sc in scans if 'ObsTgt' in sc['intent']}
         if tg != {args.target}:
             E('-', f"target scans observe {sorted(tg)}, expected only {args.target!r}")
+
+    if weather and bands:
+        ln, wv, pv = weather
+        sci = [b for b, its in bands.items() if 'ObsTgt' in its] or list(bands)
+        tw, tp = weather_limits(sci)
+        _, tp_self = weather_limits(sci, selfcal=True)
+        if wv > tw or pv > tp_self:
+            W(ln, f"weather w={wv:g},p={pv:g} is looser than the NRAO limits for {','.join(sci)} "
+                  f"(w={tw:g},p={tp:g}; p={tp_self:g} if self-calibrating)")
+        elif wv < tw or pv < tp:
+            W(ln, f"weather w={wv:g},p={pv:g} is stricter than the NRAO limits for {','.join(sci)} "
+                  f"(w={tw:g},p={tp:g}), which makes the SB harder to schedule")
 
     total = sum(sc['sec'] for sc in scans)
     if args.expect:

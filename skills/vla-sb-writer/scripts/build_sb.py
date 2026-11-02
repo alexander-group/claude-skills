@@ -59,7 +59,25 @@ SETUP_EACH = 60       # s, each additional attenuator setup scan
 PTG_GAIN = 210        # s, X-band reference pointing on the gain calibrator
 PTG_FLUX = 390        # s, X-band reference pointing on the flux calibrator (includes the long slew)
 FLUX_SCAN, FLUX_REPS = 90, 2   # s x reps per band on the flux/bandpass calibrator
+REPOINT = 3600        # s, max time at Ku/K/Ka after a reference pointing before re-pointing
+REPOINT_SLACK = 900   # s, don't add a pointing just to cover a short overrun
 SLEW_RATE = 20.0      # deg/min (elevation; azimuth is 40 deg/min) for slew-absorbing scans
+
+
+# NRAO dynamic-scheduling weather limits (obsguide/dynsched/weather-constraints):
+# band: (max wind m/s, conservative API phase rms deg, self-cal API deg). None = any.
+WEATHER = {
+    'L': (None, None, None), 'S': (None, 60, 120), 'C': (None, 45, 90), 'X': (15, 30, 60),
+    'Ku': (10, 15, 30), 'K': (7, 10, 20), 'Ka': (6, 7, 14),
+}
+ANY_VALUE = 100.0     # what the group enters in the OPT for "any" (e.g. w=100.0 for C band)
+
+
+def weather_limits(bands, selfcal=False):
+    """Strictest limits over the bands in the SB (the whole SB runs under one constraint)."""
+    winds = [WEATHER[b][0] for b in bands if WEATHER[b][0] is not None]
+    apis = [WEATHER[b][2 if selfcal else 1] for b in bands if WEATHER[b][1] is not None]
+    return (min(winds) if winds else ANY_VALUE), (min(apis) if apis else ANY_VALUE)
 
 
 def fmt(sec):
@@ -124,6 +142,148 @@ class SB:
         return sum(s * r for _, _, s, r in self.scans)
 
 
+def make_sb(target, catalog, config, bands, total, gain_cal, flux_cal, lst, sb_name=None, wrap='',
+            az_start=None, el_start=35.0, wind=None, api=None, selfcal=False, comments='', weights=None,
+            flux_first=False):
+    """Build one SB. Returns dict(text, name, total, on_target, overhead, plan, res, notes).
+    total is in seconds; bands is a list; weights a {band: weight} dict."""
+    bands = [b for b in BAND_ORDER if b in bands]
+    if not re.fullmatch(r'(\d\d:\d\d:\d\d-\d\d:\d\d:\d\d)(, ?\d\d:\d\d:\d\d-\d\d:\d\d:\d\d)*', lst):
+        raise ValueError("lst must look like 04:25:00-11:45:00")
+    res = {b: RESOURCES[config][b] for b in bands}
+    high = any(b in HIGH for b in bands)
+    pc = 'Y' if high else 'N'           # apply reference-pointing corrections on all scans when pointing is done
+    w = {b: 1.0 for b in bands}
+    w.update(weights or {})
+    name = sb_name or f"{''.join(SHORT[b] for b in reversed(bands))}_{target}"   # group style: LSCX_<target>
+    az = az_start if az_start is not None else {'CCW': -85.0, 'CW': 445.0, '': 180.0}[wrap]
+    dw, da = weather_limits(bands, selfcal)
+    wind = dw if wind is None else wind
+    api = da if api is None else api
+    gc, fc = cal_coord(gain_cal), cal_coord(flux_cal)
+    gf_sep = gc.separation(fc).deg
+    notes = []
+
+    def flux_block(sb, preceded_by_slew):
+        sb.loop('BP_FLUX')
+        if high:
+            sb.ptg('Xrefpnt_Fcal', flux_cal, max(PTG_FLUX, slew_scan_dur(gf_sep) + 150) if preceded_by_slew else 150)
+        elif preceded_by_slew:
+            sb.std('Slew_Fcal', flux_cal, res[bands[0]], slew_scan_dur(gf_sep), 'SetAtnGain,', ptgcorr=pc)
+        for b in bands:
+            if b in THREE_BIT:
+                sb.std(f'Requant_{SHORT[b]}', flux_cal, res[b], REQUANT, 'SetAtnGain,', ptgcorr=pc)
+            sb.loop(f'BP_FLUX_{SHORT[b]}', FLUX_REPS)
+            sb.std('', flux_cal, res[b], FLUX_SCAN, 'CalBP,CalFlux,', ptgcorr=pc)
+            sb.end()
+        sb.end()
+        sb.blank()
+
+    def build(plan):
+        """plan: {band: (n_cycles, target_scan_seconds)}; n=0 gives a dry run of fixed overheads."""
+        sb = SB()
+        setup_src = flux_cal if flux_first else gain_cal
+        setup_res = (['X-point'] if high else []) + [res[b] for b in bands]
+        sb.loop('Setup Scans')
+        first = max(SETUP_EACH, SETUP_TOTAL - SETUP_EACH * (len(setup_res) - 1))
+        for i, r in enumerate(setup_res):
+            label = 'Xref' if r == 'X-point' else SHORT[next(b for b in bands if res[b] == r)]
+            sb.std(f'Dummy_{label}', setup_src, r, first if i == 0 else SETUP_EACH, 'SetAtnGain,', wrap=wrap)
+        sb.end()
+        sb.blank()
+        if flux_first:
+            flux_block(sb, preceded_by_slew=False)
+        if high:
+            sb.ptg('Xrefpnt_phase', gain_cal, PTG_GAIN + (slew_scan_dur(gf_sep) if flux_first else 0))
+        elif flux_first:
+            sb.std('Slew_Gcal', gain_cal, res[bands[0]], slew_scan_dur(gf_sep), 'SetAtnGain,', ptgcorr=pc)
+        since_ptg, repoints = 0, 0
+        for b in bands:
+            n, tdur = plan[b]
+            cyc = tdur + GAIN_SCAN
+            sb.loop(f'{SHORT[b]}-phase-target cycle')
+            if b in THREE_BIT:
+                sb.std(f'Requant_{SHORT[b]}', gain_cal, res[b], REQUANT, 'SetAtnGain,', ptgcorr=pc)
+            sb.std('', gain_cal, res[b], GAIN_SCAN, 'CalGain,', ptgcorr=pc)
+            since_ptg += GAIN_SCAN
+            left, chunk = n, 0
+            while left:
+                k = left
+                if b in HIGH and since_ptg + k * cyc > REPOINT + REPOINT_SLACK:
+                    k = max(1, (REPOINT - since_ptg) // cyc) if since_ptg + cyc <= REPOINT else 0
+                if k:
+                    chunk += 1
+                    sb.loop(f'target_{SHORT[b]}_loop' + (f'_{chunk}' if chunk > 1 else ''), k)
+                    sb.std('', target, res[b], tdur, 'ObsTgt,', ptgcorr=pc)
+                    sb.std('', gain_cal, res[b], GAIN_SCAN, 'CalGain,', ptgcorr=pc)
+                    sb.end()
+                    left -= k
+                    since_ptg += k * cyc
+                if left:   # re-point on the gain calibrator, then re-set the requantizers
+                    sb.ptg(f'Xrefpnt_phase_{repoints + 2}', gain_cal, PTG_GAIN)
+                    if b in THREE_BIT:
+                        sb.std(f'Requant_{SHORT[b]}', gain_cal, res[b], REQUANT, 'SetAtnGain,', ptgcorr=pc)
+                    since_ptg, repoints = 0, repoints + 1
+            sb.end()
+            sb.blank()
+        if not flux_first:
+            flux_block(sb, preceded_by_slew=True)
+        sb.repoints = repoints
+        return sb
+
+    fixed = build({b: (0, 0) for b in bands}).total()
+    wsum = sum(w[b] for b in bands)
+    extra = 0
+    for _ in range(4):        # iterate: extra pointings eat into the target time
+        remain = total - fixed - extra
+        if remain < 120 * len(bands):
+            raise ValueError(f"Total {fmt(total)} is too short: overheads are {fmt(fixed + extra)} for bands "
+                             f"{bands}. Ask for more time or fewer bands.")
+        plan = {}
+        for b in bands:
+            rb = remain * w[b] / wsum
+            per = CYCLE[b][config] + GAIN_SCAN
+            n = max(1, math.ceil(rb / per))
+            plan[b] = (n, max(30, int(round((rb / n - GAIN_SCAN) / 5.0)) * 5))
+        sb = build(plan)
+        new_extra = sb.total() - fixed - sum(n * (t + GAIN_SCAN) for n, t in plan.values())
+        if new_extra == extra:
+            break
+        extra = new_extra
+    if sb.repoints:
+        notes.append(f"added {sb.repoints} extra X-band reference pointing(s) so no more than "
+                     f"{REPOINT // 60} min is spent at Ku/K/Ka after a pointing")
+    for b in bands:
+        if (config, b) in UNVERIFIED:
+            notes.append(f"WARNING: resource {res[b]} has not been used in group SBs; confirm it exists in the OPT.")
+    if ANY_VALUE in (wind, api):
+        notes.append(f"weather: 'any' entered as {ANY_VALUE:g} (as in group C-band SBs)")
+
+    header = [
+        "VERSION; 7;", "",
+        f" SRC-CAT; VLA, {catalog};",
+        "HDWR-CAT; NRAO Defaults;", "",
+        f"SCHED-BLOCK; {name}; Dynamic; 1; {datetime.date.today()} 00:00:00,2099-12-31 23:59:59; {lst}, ; 3.0; "
+        f"{config}; {az:.1f}; {el_start:.1f}; N; N; w={wind:.1f},p={api:.1f}; {comments}; ", "",
+    ]
+    text = '\n'.join(header + sb.lines).rstrip() + '\n'
+    on_t = sum(s * r for k, _, s, r in sb.scans if k == 'ObsTgt,')
+    return dict(text=text, name=name, total=sb.total(), on_target=on_t, overhead=sb.total() - on_t, plan=plan,
+                res=res, notes=notes, gf_sep=gf_sep, wind=wind, api=api, bands=bands)
+
+
+def budget(r, requested, config, out=sys.stderr):
+    print(f"\nTIME BUDGET for {r['name']} ({config} config, {','.join(r['bands'])})", file=out)
+    print(f"  requested {fmt(requested)}   generated {fmt(r['total'])}   on target {fmt(r['on_target'])} "
+          f"({100 * r['on_target'] / r['total']:.0f}%)   weather w={r['wind']:g},p={r['api']:g}", file=out)
+    for b in r['bands']:
+        n, tdur = r['plan'][b]
+        print(f"  {b:<3} {r['res'][b]:<20} {n} x {fmt(tdur)} on target (cycle limit {CYCLE[b][config]} s) "
+              f"= {fmt(n * tdur)}", file=out)
+    for n in r['notes']:
+        print(f"  NOTE: {n}", file=out)
+
+
 def main():
     ap = argparse.ArgumentParser(description=__doc__, formatter_class=argparse.RawDescriptionHelpFormatter)
     ap.add_argument('--target', required=True, help='target name exactly as in the OPT source catalog')
@@ -138,8 +298,9 @@ def main():
     ap.add_argument('--wrap', default='', choices=['', 'CW', 'CCW'], help='antenna wrap for the setup scans')
     ap.add_argument('--az-start', type=float, help='default -85 (CCW), 445 (CW), 180 (no wrap)')
     ap.add_argument('--el-start', type=float, default=35.0)
-    ap.add_argument('--wind', type=float, default=10.0)
-    ap.add_argument('--api', type=float, default=15.0)
+    ap.add_argument('--wind', type=float, help='override; default from the NRAO table for the strictest band')
+    ap.add_argument('--api', type=float, help='override; default from the NRAO table for the strictest band')
+    ap.add_argument('--selfcal', action='store_true', help='target bright enough to self-calibrate: relaxed API limit')
     ap.add_argument('--comments', default='')
     ap.add_argument('--weights', default='', help='relative target time per band, e.g. X=2,C=1 (default equal)')
     ap.add_argument('--flux-first', action='store_true',
@@ -150,122 +311,21 @@ def main():
     bands = [b.strip() for b in a.bands.split(',') if b.strip()]
     if any(b not in BAND_ORDER for b in bands):
         sys.exit(f"Unknown band in {bands}; use {BAND_ORDER}")
-    bands = [b for b in BAND_ORDER if b in bands]
-    if not re.fullmatch(r'\d\d:\d\d:\d\d-\d\d:\d\d:\d\d', a.lst):
-        sys.exit("--lst must look like 04:25:00-11:45:00")
-    res = {b: RESOURCES[a.config][b] for b in bands}
-    high = any(b in HIGH for b in bands)
-    pc = 'Y' if high else 'N'           # apply reference-pointing corrections on all scans when pointing is done
+    weights = {k.strip(): float(v) for k, v in (kv.split('=') for kv in filter(None, a.weights.split(',')))}
     total = parse_total(a.total)
-    weights = {b: 1.0 for b in bands}
-    for kv in filter(None, a.weights.split(',')):
-        k, v = kv.split('=')
-        weights[k.strip()] = float(v)
-    name = a.sb_name or f"{''.join(SHORT[b] for b in reversed(bands))}_{a.target}"   # group style: LSCX_<target>
-    az = a.az_start if a.az_start is not None else {'CCW': -85.0, 'CW': 445.0, '': 180.0}[a.wrap]
-
-    gc, fc = cal_coord(a.gain_cal), cal_coord(a.flux_cal)
-    gf_sep = gc.separation(fc).deg
-
-    def flux_block(sb, preceded_by_slew):
-        sb.loop('BP_FLUX')
-        if high:
-            sb.ptg('Xrefpnt_Fcal', a.flux_cal, max(PTG_FLUX, slew_scan_dur(gf_sep) + 150) if preceded_by_slew else 150)
-        elif preceded_by_slew:
-            sb.std('Slew_Fcal', a.flux_cal, res[bands[0]], slew_scan_dur(gf_sep), 'SetAtnGain,', ptgcorr=pc)
-        for b in bands:
-            if b in THREE_BIT:
-                sb.std(f'Requant_{SHORT[b]}', a.flux_cal, res[b], REQUANT, 'SetAtnGain,', ptgcorr=pc)
-            sb.loop(f'BP_FLUX_{SHORT[b]}', FLUX_REPS)
-            sb.std('', a.flux_cal, res[b], FLUX_SCAN, 'CalBP,CalFlux,', ptgcorr=pc)
-            sb.end()
-        sb.end()
-        sb.blank()
-
-    def build(cycle_time):
-        """cycle_time: {band: (n_cycles, target_scan_seconds)} or None for a dry run of overheads."""
-        sb = SB()
-        setup_src = a.flux_cal if a.flux_first else a.gain_cal
-        setup_res = (['X-point'] if high else []) + [res[b] for b in bands]
-        sb.loop('Setup Scans')
-        first = max(SETUP_EACH, SETUP_TOTAL - SETUP_EACH * (len(setup_res) - 1))
-        for i, r in enumerate(setup_res):
-            label = 'Xref' if r == 'X-point' else SHORT[next(b for b in bands if res[b] == r)]
-            sb.std(f'Dummy_{label}', setup_src, r, first if i == 0 else SETUP_EACH, 'SetAtnGain,', wrap=a.wrap)
-        sb.end()
-        sb.blank()
-        if a.flux_first:
-            flux_block(sb, preceded_by_slew=False)
-        if high:
-            ptg_dur = PTG_GAIN + (slew_scan_dur(gf_sep) if a.flux_first else 0)
-            sb.ptg('Xrefpnt_phase', a.gain_cal, ptg_dur)
-        elif a.flux_first:
-            sb.std('Slew_Gcal', a.gain_cal, res[bands[0]], slew_scan_dur(gf_sep), 'SetAtnGain,', ptgcorr=pc)
-        for b in bands:
-            n, tdur = cycle_time[b] if cycle_time else (0, 0)
-            sb.loop(f'{SHORT[b]}-phase-target cycle')
-            if b in THREE_BIT:
-                sb.std(f'Requant_{SHORT[b]}', a.gain_cal, res[b], REQUANT, 'SetAtnGain,', ptgcorr=pc)
-            sb.std('', a.gain_cal, res[b], GAIN_SCAN, 'CalGain,', ptgcorr=pc)
-            if n:
-                sb.loop(f'target_{SHORT[b]}_loop', n)
-                sb.std('', a.target, res[b], tdur, 'ObsTgt,', ptgcorr=pc)
-                sb.std('', a.gain_cal, res[b], GAIN_SCAN, 'CalGain,', ptgcorr=pc)
-                sb.end()
-            sb.end()
-            sb.blank()
-        if not a.flux_first:
-            flux_block(sb, preceded_by_slew=True)
-        return sb
-
-    overhead = build(None).total()
-    remain = total - overhead
-    if remain < 120 * len(bands):
-        sys.exit(f"Total {fmt(total)} is too short: overheads alone are {fmt(overhead)} for bands {bands}. "
-                 f"Ask for more time or fewer bands.")
-    wsum = sum(weights[b] for b in bands)
-    plan = {}
-    for b in bands:
-        rb = remain * weights[b] / wsum
-        per = CYCLE[b][a.config] + GAIN_SCAN
-        n = max(1, math.ceil(rb / per))
-        tdur = max(30, int(round((rb / n - GAIN_SCAN) / 5.0)) * 5)
-        plan[b] = (n, tdur)
-    sb = build(plan)
-
-    header = [
-        "VERSION; 7;", "",
-        f" SRC-CAT; VLA, {a.catalog};",
-        "HDWR-CAT; NRAO Defaults;", "",
-        f"SCHED-BLOCK; {name}; Dynamic; 1; {datetime.date.today()} 00:00:00,2099-12-31 23:59:59; {a.lst}, ; 3.0; "
-        f"{a.config}; {az:.1f}; {a.el_start:.1f}; N; N; w={a.wind:.1f},p={a.api:.1f}; {a.comments}; ", "",
-    ]
-    text = '\n'.join(header + sb.lines).rstrip() + '\n'
+    try:
+        r = make_sb(a.target, a.catalog, a.config, bands, total, a.gain_cal, a.flux_cal, a.lst, a.sb_name, a.wrap,
+                    a.az_start, a.el_start, a.wind, a.api, a.selfcal, a.comments, weights, a.flux_first)
+    except ValueError as e:
+        sys.exit(str(e))
     if a.out:
         with open(a.out, 'w') as f:
-            f.write(text)
+            f.write(r['text'])
     else:
-        print(text)
-
-    # ---- time budget (stderr so stdout stays a clean SB) ----
-    tgt = sum(s * r for k, _, s, r in sb.scans if k == 'ObsTgt,')
-    out = sys.stderr
-    print(f"\nTIME BUDGET for {name} ({a.config} config, {','.join(bands)})", file=out)
-    print(f"  requested {fmt(total)}   generated {fmt(sb.total())}   overheads {fmt(overhead)}   "
-          f"on target {fmt(tgt)} ({100 * tgt / sb.total():.0f}%)", file=out)
-    for b in bands:
-        n, tdur = plan[b]
-        print(f"  {b:<3} {res[b]:<20} {n} x {fmt(tdur)} on target (cycle limit {CYCLE[b][a.config]} s) "
-              f"= {fmt(n * tdur)}", file=out)
-        if (a.config, b) in UNVERIFIED:
-            print(f"  WARNING: resource {res[b]} has not been used in group SBs; confirm it exists in the OPT.", file=out)
-    print(f"  gain cal {a.gain_cal} | flux cal {a.flux_cal} (gain-flux separation {gf_sep:.0f} deg)", file=out)
-    hf_time = sum(n * (tdur + GAIN_SCAN) for b, (n, tdur) in plan.items() if b in HIGH)
-    if hf_time > 3600:
-        print("  NOTE: >1 h at Ku/K/Ka after a single reference pointing; consider splitting with a second PTG.",
-              file=out)
+        print(r['text'])
+    budget(r, total, a.config)
     if a.out:
-        print(f"  wrote {a.out}", file=out)
+        print(f"  wrote {a.out}", file=sys.stderr)
 
 
 if __name__ == '__main__':

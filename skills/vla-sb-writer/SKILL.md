@@ -1,105 +1,112 @@
 ---
 name: vla-sb-writer
-description: Write VLA (Very Large Array) scheduling blocks (SBs) for continuum observations of point-source targets such as TDEs, GRBs, SNe and FBOTs, as OPT text-format .optSB files that pass OPT validation. Handles any mix of L, S, C, X, Ku, K and Ka bands in A, B, C or D configuration. It picks gain and flux calibrators from the bundled VLA calibrator list, sets resources and gain-cycle times for the configuration, fits scans into a requested total time, and computes the LST start range. Use this whenever someone asks to write, make, draft, generate or update a VLA SB, scheduling block, or OPT/optSB file, plans VLA radio follow-up of a transient, says "load the skill for writing VLA SBs", or needs a VLA phase calibrator or LST range for an SB, even if they don't say "scheduling block".
+description: Write VLA (Very Large Array) scheduling blocks (SBs) for continuum observations of point-source targets such as TDEs, GRBs, SNe and FBOTs, as OPT text-format .optSB files that pass OPT validation. Handles any mix of L, S, C, X, Ku, K and Ka bands in A, B, C or D configuration. It picks gain and flux calibrators from the bundled VLA calibrator list, sets resources, cycle times and NRAO weather limits for the configuration and bands, and fits scans into a requested total time. It writes linked early/mid/late SBs when needed to maximize the LST range the observation can start in and the time on source. Use this whenever someone asks to write, make, draft, generate or update a VLA SB, scheduling block, or OPT/optSB file, plans VLA radio follow-up of a transient, says "load the skill for writing VLA SBs", or needs a VLA phase calibrator or LST range for an SB, even if they don't say "scheduling block".
 ---
 
 # VLA scheduling-block writer
 
-This skill produces OPT text-format SBs (`VERSION; 7;`) in the style the group uses by hand. Three scripts do the deterministic work. Your job is to collect the inputs, make the judgment calls (calibrators, LST range, band weights, flux calibrator placement), and explain them.
+## What a good SB set achieves
+
+The whole point is to get the data. Two goals drive every decision below:
+
+1. **Maximize the LST range in which the observation can start.** Dynamic scheduling only runs an SB when its LST start range, weather limits and priority line up. A narrow window, or limits stricter than needed, can leave a time-critical source unobserved for days.
+2. **Maximize time on source** within the requested total time. Overheads include setup, slews, pointing, requantizer scans and calibrators; spend only what calibration needs.
+
+A single SB often can't satisfy both. The target or gain calibrator may set partway through. A calibrator may pass above 80° (the antennas can't track well near zenith). The flux calibrator may be up only at the start or only at the end. The group then writes **linked early / late (and sometimes mid) SBs**, which are copies with different LST start ranges and typically:
+- a different flux calibrator, or the flux calibrator moved between first and last
+- opposite antenna wraps
+
+Together they cover every usable start LST. The comments tell the operators to run only one. `plan_sbs.py` makes this choice for you: it finds the fewest SBs that cover every usable start LST, preferring variants with more time on source.
+
+## Tools
 
 Scripts live in `scripts/` next to this file. They need Python 3 with numpy, pandas and astropy, and read the bundled calibrator list in `data/`.
 
-- `find_calibrators.py` lists gain-calibrator candidates, flux-calibrator visibility and LST start ranges.
-- `build_sb.py` writes the SB and prints a time budget.
-- `check_sb.py` is a static checker that runs before the user imports the file into the OPT.
+| script | does |
+|---|---|
+| `find_calibrators.py` | lists gain-calibrator candidates (codes and flux per band and configuration), plus target and flux-calibrator visibility; looks up names in `$TNS_CATALOG` |
+| `plan_sbs.py` | **main path:** chooses single vs early/mid/late, flux calibrator and placement, and LST ranges; writes the SB file(s) via `build_sb.py`; prints budgets and coverage |
+| `build_sb.py` | builds one SB with explicit choices; use it when you need to override the planner |
+| `check_sb.py` | static checker; run it on every file before handing it over |
 
-For the meaning of the file's fields, see `references/sb-format.md`. For the reasoning behind resources, cycle times, calibrator criteria and LST rules, see `references/strategy.md`. Real group SBs are in `references/examples/`.
+For the field-by-field file format, see `references/sb-format.md`. For the reasoning behind resources, cycle times, the weather table, calibrator criteria and LST rules, see `references/strategy.md`. Real group SBs are in `references/examples/`.
 
 ## 1. Collect the inputs
 
-You need all six of these. Ask for whichever are missing, in one message, rather than guessing. Every wrong input produces an SB that fails validation or wastes telescope time.
+You need all six of these. Ask for whichever are missing, in one message, rather than guessing:
 
-1. **Target name** exactly as it appears in the OPT source catalog. The SB refers to the target by name, so a mismatch fails validation.
-2. **Source catalog name** in the OPT. This is usually the project code, e.g. `26A-445`. It becomes `SRC-CAT; VLA, <catalog>;`.
-3. **Total SB time**, e.g. "1h", "1.5 h", "90 min".
+1. **Target name** exactly as it appears in the OPT source catalog. A mismatch fails validation.
+2. **Source catalog name**, usually the project code (e.g. `26A-445`).
+3. **Total SB time**, e.g. "1h", "1.5 h", "90 min". This is the length of *each* SB; linked SBs don't share it.
 4. **Bands**: any of L, S, C, X, Ku (also called U), K, Ka.
-5. **RA/Dec** of the target. If the user gives only a transient name, try `find_calibrators.py --name <name>`. That reads the CSV at `$TNS_CATALOG`. If the variable is unset or the name isn't found, ask for coordinates.
-6. **Array configuration**: A, B, C or D. If the user says "Any" or doesn't know, ask which configuration the SB will run in, because resources and cycle times depend on it.
+5. **RA/Dec**. If the user gives only a transient name, use `--name`, which reads `$TNS_CATALOG`. If that is unset or the name isn't found, ask for coordinates.
+6. **Array configuration**: A, B, C or D. If they say "Any", ask which configuration the SB will run in.
 
-Optional inputs, with defaults:
-- epoch label for the file name (e.g. `e2`)
-- comments to the operators (urgency, science case, linked SBs)
+Optional inputs:
+- epoch label for the file name (e.g. `e3`)
+- comments to the operators
 - band weights, if some bands need more time
-- weather limits: `w=10,p=15`, or `w=7,p=10` if K or Ka is included
-- wrap preference
+- whether the target is bright enough to self-calibrate (about 0.1 Jy or more over a 1 GHz band), which allows the relaxed API limit with `--selfcal`
 
-## 2. Find calibrators
+## 2. Choose the gain calibrator
 
 ```bash
-python scripts/find_calibrators.py --ra <RA> --dec <Dec> --config <A|B|C|D> --bands <comma list>
+python scripts/find_calibrators.py --ra <RA> --dec <Dec> --config <cfg> --bands <comma list>
 ```
 
 Choose **one gain calibrator for all bands**:
-- It should be coded P or S in this configuration for every requested band; "usable YES" in the output marks these.
-- It should be as close as possible to the target: within about 10° if any band is Ku or above, about 15° otherwise.
-- Its flux should be at least a few hundred mJy.
+- coded P or S in this configuration for every band (the output marks these "usable YES")
+- as close as possible: within about 10° if any band is Ku or above, about 15° otherwise
+- flux of at least a few hundred mJy
 
-The guide prefers a strong P calibrator a little farther away over a weak nearby S one. If no single calibrator works for all bands, say so and propose the best compromise, or a per-band choice; per-band choices need hand-editing after the build.
+A strong P calibrator farther away beats a weak nearby S one. Also check the calibrator's elevation window against the target's. A calibrator whose window is shorter than the target's narrows the LST range, which works against goal 1. If two candidates are comparable, prefer the one whose visibility better matches the target's.
 
-Then get start ranges with the chosen calibrator and the SB length:
-
-```bash
-python scripts/find_calibrators.py --ra <RA> --dec <Dec> --config <cfg> --bands <bands> --gain-cal <J name> --length <hours>
-```
-
-Use `--min-el 35` in C or D configuration. Choose the flux calibrator and whether it goes first or last:
-- Prefer 3C286, 3C147 or 3C48. Avoid 3C138, which is variable.
-- Use the combination with the widest start range that suits the request.
-- Observing the flux calibrator first (`--flux-first`) works well when it is high at the start and the target rises afterwards.
-
-If no single range works, or the user wants flexibility, write two linked SBs (`_early` and `_late`, often with opposite wraps). Note in the comments that only one should be observed.
-
-## 3. Build the SB
+## 3. Plan and write the SBs
 
 ```bash
-python scripts/build_sb.py --target <name> --catalog <catalog> --config <cfg> --bands <bands> \
-    --total <time> --gain-cal <J name> --flux-cal <3Cxx> --lst <HH:MM:SS-HH:MM:SS> \
-    [--flux-first] [--wrap CW|CCW] [--weights X=2,C=1] --comments "<text>" \
-    --sb-name <name> --out <path>.optSB
+python scripts/plan_sbs.py --target <name> --catalog <catalog> --config <cfg> --bands <bands> \
+    --total <time> --ra <RA> --dec <Dec> --gain-cal <J name> --epoch <eN> \
+    --comments "<note to operators>" --outdir <dir>
 ```
 
-The script handles:
-- the resource for each band and configuration
-- the setup loop
-- X-band reference pointing for Ku and above
-- 30 s requantizer scans for 3-bit bands
-- gain/target cycles under the per-configuration cycle limit
-- the bandpass/flux block
-- scans that absorb slews between distant calibrators
+The planner does the following:
+- Tries each flux calibrator (3C286, 3C147 and 3C48, plus 3C138 only as a last resort), observed either first or last.
+- For each variant, finds every start LST where the target and gain calibrator stay between the minimum elevation and 80° for the whole SB, and the flux calibrator is in that range while it is observed. The default minimum is 30°, or 35° in C and D configurations to limit shadowing.
+- Picks the fewest SBs that cover all those start LSTs. Among similar options it prefers more time on source, and it drops a linked SB that would add less than 30 min of start range.
+- Writes `<bands>_<target>_<epoch>[_early|_mid|_late].optSB`. Linked SBs get the group's wraps (early CCW, late CW) and the "observe only 1 of the linked SBs" note appended to the comments.
 
-It fits all of this into `--total` and prints a time budget on stderr. Keep the budget output to show the user.
+Each file contains:
+- the configuration's resources
+- gain-cycle times under the per-configuration limit
+- NRAO weather limits for the strictest band in the SB
+- X-band reference pointing for Ku and above, repeated about every hour
+- 30 s requantizer scans
+- the flux/bandpass block
 
-**Naming.** Follow the group convention: band letters from low to high frequency, then the target, then the epoch. For example `LSCX_AT2022hvp_e3.optSB` or `U_AT2026amv_e1_early.optSB`, where U = Ku and A = Ka. Write the file to the location the user asked for, or to the current directory.
+**Read the plan output critically**:
+- **Coverage.** "covered X h of Y h possible" should be close to the target's whole window. If the window is much shorter than the target's time above the elevation limit, a calibrator is the bottleneck, so try another gain calibrator.
+- **Too many SBs.** If the plan needs more SBs than seems sensible, a shorter total time may cover the window with fewer SBs. Suggest it, but don't change the user's total on your own.
+- **No valid start.** If the planner reports none, it also gives the longest SB that fits. Tell the user, and offer to shorten the SB, lower `--min-el`, or split it into separate SBs.
 
-**Comments.** If the user gave no comments, write a one-sentence note to the operators in the group's style. Include what the source is, why it's time-sensitive, and the cadence request. For example: "Follow-up observation of TDE AT2026amv. Please observe within the next week if possible, or ASAP thereafter." Avoid `;` in comments, because it is the field separator.
+Write a comment if the user gave none. One sentence in the group's style covers what the source is, why it's time-sensitive, and the cadence request, e.g. "Third epoch of TDE AT2024zau. Please observe within the next week if possible, or ASAP thereafter." Don't use `;`, because it is the field separator.
 
-Don't write SB text by hand unless the user needs something the generator can't express, such as different calibrators per band, polarization calibration, or a second pointing. In those cases, start from the generator's output and edit it, then run the checker.
+Use `build_sb.py` directly only to override a planner choice, e.g. a specific LST range or flux calibrator the user asked for. It takes the same options plus `--flux-cal`, `--lst`, `--flux-first` and `--wrap`. Hand-edit generated text only for things neither script can express, such as per-band gain calibrators or polarization calibration, and re-run the checker afterwards.
 
-## 4. Check it
+## 4. Check
 
 ```bash
-python scripts/check_sb.py <path>.optSB --target <name> --catalog <catalog> --expect <total>
+python scripts/check_sb.py <dir>/*.optSB --target <name> --catalog <catalog> --expect <total>
 ```
 
-Fix every ERROR. Usually that means rerunning `build_sb.py` with different arguments. Mention any WARNs to the user; an unverified resource name is one example. The checker can't see the OPT's source catalog, slew model or hardware database, so the user's OPT import remains the final test.
+Fix every ERROR. Read the WARNs; a weather limit stricter or looser than the NRAO table is one example. The checker can't see the OPT's source catalog, slew model or hardware database, so the user's OPT import and validation remain the final test.
 
 ## 5. Report
 
 Tell the user:
-- the file path
-- the time budget: total, time on target per band, number of cycles
-- the gain calibrator, with its separation and codes
-- the flux calibrator and where it sits in the SB
-- the LST start range, with the reasoning for each
+- each file's name and LST start range, and the total start-LST coverage compared with the target's visibility window
+- why the SB is split, if it is (e.g. "target passes above 80° at LST 06:16–07:19", or "3C147 sets before the late window")
+- time on source per SB, and per band
+- the gain calibrator (separation, codes) and each SB's flux calibrator and its placement
+- the weather limits used
 
-Remind the user that the target must already be in source catalog `<catalog>` under exactly `<name>`, with the RA/Dec used here, before they import the SB. Then they should run the OPT's validation and check the Static Report for the estimated slews and elevations.
+Remind the user that the target must already be in source catalog `<catalog>` under exactly `<name>` before they import. Linked SBs should be linked in the OPT so that only one runs. They should then run validation and check the Static Report for slews.

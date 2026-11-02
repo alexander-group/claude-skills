@@ -4,7 +4,7 @@ This repo holds Claude Code skills for the group's observing and analysis workfl
 
 | skill | what it does |
 |---|---|
-| [`vla-sb-writer`](skills/vla-sb-writer/SKILL.md) | Writes VLA continuum scheduling blocks (`.optSB`, OPT text format) for point-source targets. It chooses calibrators, resources and cycle times from the array configuration and fits the scans into a requested total time. |
+| [`vla-sb-writer`](skills/vla-sb-writer/SKILL.md) | Writes VLA continuum scheduling blocks (`.optSB`, OPT text format) for point-source targets. It chooses calibrators, resources, cycle times and weather limits, and writes linked early/late SBs to maximize LST coverage and time on source. |
 
 ## Install
 
