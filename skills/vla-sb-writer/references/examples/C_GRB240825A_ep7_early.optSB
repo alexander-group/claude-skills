@@ -1,0 +1,28 @@
+VERSION; 7;
+
+ SRC-CAT; VLA, 24A-299;
+HDWR-CAT; NRAO Defaults;
+
+SCHED-BLOCK; C_GRB240825A_ep7_early; Dynamic; 1; 2018-12-08 00:00:00,2099-12-31 23:59:00; 18:20:00-23:55:00, ; 3.0; A; 445.0; 35.0; N; N; w=10.0,p=15.0; Time-sensitive observations of GRB 240825A (GCN 37274). Please observe only 1 of the linked SBs depending on weather and LST start time.; 
+
+  LOOP-START; Setup Scans; 1; N; ;
+    STD; Dummy_C; J2323-0317; C32f2Amixalt-blank; DUR; 0h 10m 0s; CW; N; N; N; N; Y; N; N; SetAtnGain,; ;
+  LOOP-END;
+  
+  LOOP-START; C-phase-GRB cycle; 1; N; ;
+    STD; RQ_C; J2323-0317; C32f2Amixalt-blank; DUR; 0h 0m 30s; ; N; N; N; N; Y; N; N; SetAtnGain,; ;
+    
+    STD; ; J2323-0317; C32f2Amixalt-blank; DUR; 0h 1m 00s; ; N; N; N; N; Y; N; N; CalGain,; ;
+    LOOP-START; GRB_C_loop; 5; N; ;
+      LOOP-START; source; 4; N; ;
+        STD; ; GRB240825A; C32f2Amixalt-blank; DUR; 0h 1m 40s; ; N; N; N; N; Y; N; N; ObsTgt,; ;
+      LOOP-END;
+      STD; ; J2323-0317; C32f2Amixalt-blank; DUR; 0h 1m 0s; ; N; N; N; N; Y; N; N; CalGain,; ;
+    LOOP-END;
+  LOOP-END;
+  
+  LOOP-START; BP/Flux; 1; N; ;
+    LOOP-START; BP_FLUX_C; 2; N; ;
+      STD; ; 3C48; C32f2Amixalt-blank; DUR; 0h 2m 50s; ; N; N; N; N; Y; N; N; CalBP,CalFlux,; ;
+    LOOP-END;
+  LOOP-END;

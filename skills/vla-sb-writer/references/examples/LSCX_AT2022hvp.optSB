@@ -1,0 +1,79 @@
+# Scans for SB ID 46491603
+
+# Output created on Sat May 17 18:04:59 UTC 2025
+
+#          Project - 20B-377
+#    Program Block - Any (B) new
+#           Status - Completed
+#    Approx Length - 1.7 hours
+
+VERSION; 7;
+
+ SRC-CAT; VLA, 25A-159;
+HDWR-CAT; NRAO Defaults;
+
+SCHED-BLOCK; At2022hvp - LSCX; Dynamic; 1; 2017-08-17 00:00:00,2099-12-31 23:59:59; 03:15:00-12:00:00, ; 3.0; B; 100.0; 35.0; N; N; w=15.0,p=30.0; New multi-frequency observation of TDE At2022hvp. Please observe ASAP to maintain our monitoring cadence.; 
+
+  LOOP-START; Setup Scans; 1; N; ;
+    STD; Dummy_X; 3C147; X32f3DCB; DUR; 0h 7m 0s; ; N; N; N; N; Y; N; N; SetAtnGain,; ;
+    STD; Dummy_C; 3C147; C32f5DC; DUR; 0h 1m 0s; ; N; N; N; N; Y; N; N; SetAtnGain,; ;
+    STD; Dummy_L; 3C147; L16f5DC; DUR; 0h 1m 0s; ; N; N; N; N; Y; N; N; SetAtnGain,; ;
+    STD; Dummy_S; 3C147; S16f5DC; DUR; 0h 1m 0s; ; N; N; N; N; Y; N; N; SetAtnGain,; ;
+  LOOP-END;
+  LOOP-START; BP_FLUX; 1; N; ;
+    STD; Requant_X; 3C147; X32f3DCB; DUR; 0h 0m 30s; ; N; N; N; N; Y; N; N; SetAtnGain,; ;
+    LOOP-START; BP_FLUX_X; 2; N; ;
+      STD; ; 3C147; X32f3DCB; DUR; 0h 1m 30s; ; N; N; N; N; Y; N; N; CalBP,CalFlux,; ;
+    LOOP-END;
+    STD; Requant_C; 0542+498=3C147; C32f5DC; DUR; 0h 0m 30s; ; N; N; N; N; Y; N; N; SetAtnGain,; ;
+    LOOP-START; BP_FLUX_C; 2; N; ;
+      STD; ; 3C147; C32f5DC; DUR; 0h 1m 30s; ; N; N; N; N; Y; N; N; CalBP,CalFlux,; ;
+    LOOP-END;
+    LOOP-START; BP_FLUX_S; 2; N; ;
+      STD; ; 3C147; S16f5DC; DUR; 0h 1m 30s; ; N; N; N; N; Y; N; N; CalBP,CalFlux,; ;
+    LOOP-END;
+    LOOP-START; BP_FLUX_L; 2; N; ;
+      STD; ; 3C147; L16f5DC; DUR; 0h 1m 30s; ; N; N; N; N; Y; N; N; CalBP,CalFlux,; ;
+    LOOP-END;
+  LOOP-END;
+  LOOP-START; X-phase-TDE cycle; 1; N; ;
+    STD; Requant_X; J1035+5628; X32f3DCB; DUR; 0h 0m 30s; ; N; N; N; N; Y; N; N; SetAtnGain,; ;
+    STD; ; J1035+5628; X32f3DCB; DUR; 0h 3m 45s; ; N; N; N; N; Y; N; N; CalGain,; ;
+    LOOP-START; TDE_X_loop; 3; N; ;
+      STD; ; At2022hvp; X32f3DCB; DUR; 0h 1m 20s; ; N; N; N; N; Y; N; N; ObsTgt,; ;
+      LOOP-START; source; 3; N; ;
+        STD; ; At2022hvp; X32f3DCB; DUR; 0h 1m 25s; ; N; N; N; N; Y; N; N; ObsTgt,; ;
+      LOOP-END;
+      STD; ; J1035+5628; X32f3DCB; DUR; 0h 1m 0s; ; N; N; N; N; Y; N; N; CalGain,; ;
+    LOOP-END;
+  LOOP-END;
+  LOOP-START; C-phase-TDE cycle; 1; N; ;
+    STD; Requant_C; J1035+5628; C32f5DC; DUR; 0h 0m 30s; ; N; N; N; N; Y; N; N; SetAtnGain,; ;
+    STD; ; J1035+5628; C32f5DC; DUR; 0h 0m 45s; ; N; N; N; N; Y; N; N; CalGain,; ;
+    LOOP-START; TDE_C_loop; 2; N; ;
+      STD; ; At2022hvp; C32f5DC; DUR; 0h 1m 0s; ; N; N; N; N; Y; N; N; ObsTgt,; ;
+      LOOP-START; source; 3; N; ;
+        STD; ; At2022hvp; C32f5DC; DUR; 0h 1m 15s; ; N; N; N; N; Y; N; N; ObsTgt,; ;
+      LOOP-END;
+      STD; ; J1035+5628; C32f5DC; DUR; 0h 1m 0s; ; N; N; N; N; Y; N; N; CalGain,; ;
+    LOOP-END;
+  LOOP-END;
+  LOOP-START; S-phase-TDE cycle; 1; N; ;
+    STD; ; J1035+5628; S16f5DC; DUR; 0h 1m 10s; ; N; N; N; N; Y; N; N; CalGain,; ;
+    LOOP-START; TDE_S_loop; 2; N; ;
+      STD; ; At2022hvp; S16f5DC; DUR; 0h 2m 55s; ; N; N; N; N; Y; N; N; ObsTgt,; ;
+      LOOP-START; source; 3; N; ;
+        STD; ; At2022hvp; S16f5DC; DUR; 0h 1m 35s; ; N; N; N; N; Y; N; N; ObsTgt,; ;
+      LOOP-END;
+      STD; ; J1035+5628; S16f5DC; DUR; 0h 1m 5s; ; N; N; N; N; Y; N; N; CalGain,; ;
+    LOOP-END;
+  LOOP-END;
+  LOOP-START; L-phase-TDE cycle; 1; N; ;
+    STD; ; J1035+5628; L16f5DC; DUR; 0h 1m 5s; ; N; N; N; N; Y; N; N; CalGain,; ;
+    LOOP-START; TDE_L_loop; 3; N; ;
+      LOOP-START; source; 5; N; ;
+        STD; ; At2022hvp; L16f5DC; DUR; 0h 1m 30s; ; N; N; N; N; Y; N; N; ObsTgt,; ;
+      LOOP-END;
+      STD; ; J1035+5628; L16f5DC; DUR; 0h 1m 0s; ; N; N; N; N; Y; N; N; CalGain,; ;
+    LOOP-END;
+  LOOP-END;

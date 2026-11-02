@@ -1,0 +1,77 @@
+# Scans for SB ID 49606041
+
+# Output created on Mon Oct 20 20:41:52 UTC 2025
+
+#          Project - 25A-278
+#    Program Block - Any (25A-26A)
+#           Status - Submitted
+#    Approx Length - 2.3 hours
+
+VERSION; 7;
+
+ SRC-CAT; VLA, 25A-278;
+HDWR-CAT; NRAO Defaults;
+
+SCHED-BLOCK; CXUK_GRB251013C_ep4_CW-nopol; Dynamic; 1; 2025-10-20 19:44:01,2099-12-31 23:59:00; 00:45:00-01:40:00, ; 3.0; B; -85; 35.0; N; N; w=7.0,p=10.0; Urgent observations of bright new GRB 251013C (GCN 42222). Please observe only 1 of the linked SBs depending on weather and LST start time as soon as possible, ideally tonight. We strongly prefer the CXUKA or CXUK SBs. Please observe the CXU SB if it is not possible to observe either of the above. We are submitting a CX SB to be run only if the weather is very poor. We would prefer at least one of these SBs to be run rather than none.; 
+
+  LOOP-START; Setup Scans; 1; N; ;
+    STD; Dummy_C; J2323-0317; C32f3Bmixalt-blank; DUR; 0h 1m 0s; CW; N; N; N; N; Y; N; N; SetAtnGain,; ;
+    STD; Dummy_X; J2323-0317; X32f3DCB; DUR; 0h 1m 0s; CW; N; N; N; N; Y; N; N; SetAtnGain,; ;
+    STD; Dummy_U; J2323-0317; Ku48f3DCB; DUR; 0h 1m 0s; CW; N; N; N; N; Y; N; N; SetAtnGain,; ;
+    STD; Dummy_K; J2323-0317; K64f3DCB; DUR; 0h 1m 0s; CW; N; N; N; N; Y; N; N; SetAtnGain,; ;
+    STD; Dummy_Xref; J2323-0317; X-point; DUR; 0h 1m 00s; CW; N; N; N; N; Y; N; N; SetAtnGain,; ;
+  LOOP-END;
+  PTG; ; J2323-0317; X-point; DUR; 0h 7m 0s; CW; N; N; N; N; Y; Y;
+  LOOP-START; K-phase-GRB cycle; 1; N; ;
+    STD; RQ_K; J2323-0317; K64f3DCB; DUR; 0h 0m 30s; ; Y; N; N; N; Y; N; N; SetAtnGain,; ;
+    STD; ; J2323-0317; K64f3DCB; DUR; 0h 0m 55s; ; Y; N; N; N; Y; N; N; CalGain,; ;
+    LOOP-START; GRB-phase-loop; 7; N; ;
+      STD; ; GRB251013C; K64f3DCB; DUR; 0h 4m 10s; ; Y; N; N; N; Y; N; N; ObsTgt,; ;
+      STD; ; J2323-0317; K64f3DCB; DUR; 0h 0m 55s; ; Y; N; N; N; Y; N; N; CalGain,; ;
+    LOOP-END;
+  LOOP-END;
+  LOOP-START; U-phase-GRB cycle; 1; N; ;
+    STD; RQ_U; J2323-0317; Ku48f3DCB; DUR; 0h 0m 30s; ; Y; N; N; N; Y; N; N; SetAtnGain,; ;
+    STD; ; J2323-0317; Ku48f3DCB; DUR; 0h 1m 10s; ; Y; N; N; N; Y; N; N; CalGain,; ;
+    LOOP-START; GRB-phase-loop; 3; N; ;
+      STD; ; GRB251013C; Ku48f3DCB; DUR; 0h 6m 30s; ; Y; N; N; N; Y; N; N; ObsTgt,; ;
+      STD; ; J2323-0317; Ku48f3DCB; DUR; 0h 1m 10s; ; Y; N; N; N; Y; N; N; CalGain,; ;
+    LOOP-END;
+  LOOP-END;
+  LOOP-START; X-phase-GRB cycle; 1; N; ;
+    STD; RQ_X; J2323-0317; X32f3DCB; DUR; 0h 0m 30s; ; Y; N; N; N; Y; N; N; SetAtnGain,; ;
+    STD; ; J2323-0317; X32f3DCB; DUR; 0h 0m 45s; ; Y; N; N; N; Y; N; N; CalGain,; ;
+    LOOP-START; GRB_X_loop; 1; N; ;
+      STD; ; GRB251013C; X32f3DCB; DUR; 0h 4m 30s; ; Y; N; N; N; Y; N; N; ObsTgt,; ;
+      STD; ; GRB251013C; X32f3DCB; DUR; 0h 4m 20s; ; Y; N; N; N; Y; N; N; ObsTgt,; ;
+      STD; ; J2323-0317; X32f3DCB; DUR; 0h 1m 10s; ; Y; N; N; N; Y; N; N; CalGain,; ;
+    LOOP-END;
+  LOOP-END;
+  LOOP-START; C-phase-GRB cycle; 1; N; ;
+    STD; RQ_C; J2323-0317; C32f3Bmixalt-blank; DUR; 0h 0m 30s; ; Y; N; N; N; Y; N; N; SetAtnGain,; ;
+    STD; ; J2323-0317; C32f3Bmixalt-blank; DUR; 0h 0m 45s; ; Y; N; N; N; Y; N; N; CalGain,; ;
+    LOOP-START; GRB_C_loop; 1; N; ;
+      STD; ; GRB251013C; C32f3Bmixalt-blank; DUR; 0h 4m 30s; ; Y; N; N; N; Y; N; N; ObsTgt,; ;
+      STD; ; GRB251013C; C32f3Bmixalt-blank; DUR; 0h 4m 20s; ; Y; N; N; N; Y; N; N; ObsTgt,; ;
+      STD; ; J2323-0317; C32f3Bmixalt-blank; DUR; 0h 1m 10s; ; Y; N; N; N; Y; N; N; CalGain,; ;
+    LOOP-END;
+  LOOP-END;
+  LOOP-START; BP/Flux; 1; N; ;
+    PTG; ; 3C48; X-point; DUR; 0h 6m 00s; ; N; N; N; N; Y; Y;
+    STD; RQ_K; 3C48; K64f3DCB; DUR; 0h 0m 30s; ; Y; N; N; N; Y; N; N; SetAtnGain,; ;
+    LOOP-START; BP_FLUX_K; 2; N; ;
+      STD; ; 3C48; K64f3DCB; DUR; 0h 1m 30s; ; Y; N; N; N; Y; N; N; CalBP,CalFlux,CalPolAng,; ;
+    LOOP-END;
+    STD; RQ_U; 3C48; Ku48f3DCB; DUR; 0h 0m 30s; ; Y; N; N; N; Y; N; N; SetAtnGain,; ;
+    LOOP-START; BP_FLUX_U; 2; N; ;
+      STD; ; 3C48; Ku48f3DCB; DUR; 0h 1m 30s; ; Y; N; N; N; Y; N; N; CalBP,CalFlux,CalPolAng,; ;
+    LOOP-END;
+    STD; RQ_X; 3C48; X32f3DCB; DUR; 0h 0m 30s; ; Y; N; N; N; Y; N; N; SetAtnGain,; ;
+    LOOP-START; BP_FLUX_X; 2; N; ;
+      STD; ; 3C48; X32f3DCB; DUR; 0h 1m 30s; ; Y; N; N; N; Y; N; N; CalBP,CalFlux,CalPolAng,; ;
+    LOOP-END;
+    STD; RQ_C; 3C48; C32f3Bmixalt-blank; DUR; 0h 0m 30s; ; Y; N; N; N; Y; N; N; SetAtnGain,; ;
+    LOOP-START; BP_FLUX_C; 2; N; ;
+      STD; ; 3C48; C32f3Bmixalt-blank; DUR; 0h 1m 30s; ; Y; N; N; N; Y; N; N; CalBP,CalFlux,CalPolAng,; ;
+    LOOP-END;
+  LOOP-END;

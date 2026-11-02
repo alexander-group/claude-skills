@@ -1,0 +1,32 @@
+VERSION; 7;
+
+ SRC-CAT; VLA, 26A-445;
+HDWR-CAT; NRAO Defaults;
+
+SCHED-BLOCK; AT2026amv_U_e1_early; Dynamic; 1; 2017-08-17 00:00:00,2099-12-31 23:59:59; 04:25:00-11:45:10, ; 3.0; A; -85.0; 35.0; N; N; w=10.0,p=15.0; First observation of new TDE candidate AT2026amv (http://www.wis-tns.org/astronotes/astronote/2026-37). Please observe within the next week if possible or ASAP thereafter.; 
+
+  LOOP-START; Setup Scans; 1; N; ;
+    STD; Dummy_Xref; J0811+0146; X-point; DUR; 0h 8m 40s; CCW; N; N; N; N; Y; N; N; SetAtnGain,; ;
+    STD; Dummy_Ku; J0811+0146; Ku48f2A; DUR; 0h 1m 0s; CCW; N; N; N; N; Y; N; N; SetAtnGain,; ;
+  LOOP-END;
+  
+  PTG; Xrefpnt_phase; J0811+0146; X-point; DUR; 0h 3m 30s; CCW; N; N; N; N; Y; Y;
+  LOOP-START; Ku-phase-TDE cycle; 1; N; ;
+    STD; Requant_Ku; J0811+0146; Ku48f2A; DUR; 0h 0m 30s; ; Y; N; N; N; Y; N; N; SetAtnGain,; ;
+    STD; ; J0811+0146; Ku48f2A; DUR; 0h 0m 55s; ; Y; N; N; N; Y; N; N; CalGain,; ;
+    LOOP-START; TDE_Ku_loop; 7; N; ;
+      LOOP-START; source; 4; N; ;
+        STD; ; AT2026amv; Ku48f2A; DUR; 0h 1m 0s; ; Y; N; N; N; Y; N; N; ObsTgt,; ;
+      LOOP-END;
+      STD; ; J0811+0146; Ku48f2A; DUR; 0h 0m 55s; ; Y; N; N; N; Y; N; N; CalGain,; ;
+    LOOP-END;
+  LOOP-END;
+  
+  PTG; Xrefpnt_3C147; 3C147; X-point; DUR; 0h 6m 30s; CCW; N; N; N; N; Y; Y;
+  
+  LOOP-START; BP_FLUX; 1; N; ;
+    STD; Requant_Ku; 3C147; Ku48f2A; DUR; 0h 0m 30s; ; Y; N; N; N; Y; N; N; SetAtnGain,; ;
+    LOOP-START; BP_FLUX_U; 1; N; ;
+      STD; ; 3C147; Ku48f2A; DUR; 0h 2m 55s; ; Y; N; N; N; Y; N; N; CalBP,CalFlux,; ;
+    LOOP-END;
+  LOOP-END;
