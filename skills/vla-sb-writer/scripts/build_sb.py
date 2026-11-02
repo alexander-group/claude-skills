@@ -179,7 +179,7 @@ def make_sb(target, catalog, config, bands, total, gain_cal, flux_cal, lst, sb_n
         sb.end()
         sb.blank()
 
-    def build(plan):
+    def build(plan, pad=0):
         """plan: {band: (n_cycles, target_scan_seconds)}; n=0 gives a dry run of fixed overheads."""
         sb = SB()
         setup_src = flux_cal if flux_first else gain_cal
@@ -188,7 +188,7 @@ def make_sb(target, catalog, config, bands, total, gain_cal, flux_cal, lst, sb_n
         first = max(SETUP_EACH, SETUP_TOTAL - SETUP_EACH * (len(setup_res) - 1))
         for i, r in enumerate(setup_res):
             label = 'Xref' if r == 'X-point' else SHORT[next(b for b in bands if res[b] == r)]
-            sb.std(f'Dummy_{label}', setup_src, r, first if i == 0 else SETUP_EACH, 'SetAtnGain,', wrap=wrap)
+            sb.std(f'Dummy_{label}', setup_src, r, first + pad if i == 0 else SETUP_EACH, 'SetAtnGain,', wrap=wrap)
         sb.end()
         sb.blank()
         if flux_first:
@@ -250,6 +250,15 @@ def make_sb(target, catalog, config, bands, total, gain_cal, flux_cal, lst, sb_n
         if new_extra == extra:
             break
         extra = new_extra
+    # hit the requested length exactly: the first setup scan (which absorbs the initial slew) takes up the rounding
+    diff = int(round(total - sb.total()))
+    if diff:
+        first0 = max(SETUP_EACH, SETUP_TOTAL - SETUP_EACH * (len(bands) + (1 if high else 0) - 1))
+        if first0 + diff < SETUP_EACH:
+            raise ValueError(f"cannot fit {fmt(total)} exactly (off by {diff} s); report this as a bug")
+        sb = build(plan, pad=diff)
+    if int(round(total)) % 1800:
+        notes.append(f"requested length {fmt(total)} is not a whole or half hour; the group submits 0.5 h multiples")
     if sb.repoints:
         notes.append(f"added {sb.repoints} extra X-band reference pointing(s) so no more than "
                      f"{REPOINT // 60} min is spent at Ku/K/Ka after a pointing")
@@ -295,7 +304,9 @@ def main():
     ap.add_argument('--flux-cal', required=True, help='3C48, 3C138, 3C147 or 3C286')
     ap.add_argument('--lst', required=True, help='LST start range HH:MM:SS-HH:MM:SS')
     ap.add_argument('--sb-name', help='default <bands>_<target>')
-    ap.add_argument('--wrap', default='', choices=['', 'CW', 'CCW'], help='antenna wrap for the setup scans')
+    ap.add_argument('--wrap', required=True, choices=['CW', 'CCW'],
+                    help='antenna wrap for the setup scans (required by the OPT): CCW if the target is rising '
+                         'during the SB, CW if setting')
     ap.add_argument('--az-start', type=float, help='default -85 (CCW), 445 (CW), 180 (no wrap)')
     ap.add_argument('--el-start', type=float, default=35.0)
     ap.add_argument('--wind', type=float, help='override; default from the NRAO table for the strictest band')

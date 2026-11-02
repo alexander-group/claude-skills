@@ -4,4 +4,4 @@ focus: trace
 weight: 1
 ---
 
-The total SB duration is within 10% of 2 hours.
+Every SB file's total duration (sum of scan durations times loop counts) is exactly 2 hours, to the second.

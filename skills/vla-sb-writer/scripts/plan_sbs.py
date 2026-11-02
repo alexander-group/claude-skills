@@ -1,12 +1,12 @@
 #!/usr/bin/env python3
-"""Plan and write the set of linked SBs (single, or early/mid/late) for one target.
+"""Plan and write the set of linked SBs (single, or early/late) for one target.
 
 Goal: MAXIMIZE THE LST RANGE in which some SB can start, and MAXIMIZE TIME ON SOURCE, for a fixed
 total SB length. A start LST is usable for a variant (flux calibrator + whether it is observed first
 or last) if the target and gain calibrator stay between --min-el and --max-el for the whole SB and the
 flux calibrator is in that range while it is observed. When no one variant covers every usable start
-LST (target or calibrator sets, or passes above 80 deg mid-SB), several linked SBs are written so that
-together they cover all of it; operators run only one of them.
+LST (target or calibrator sets, or passes above 80 deg mid-SB), an early and a late SB are written that
+together cover as much of it as possible; operators run only one of them, so each has the full length.
 
 Example
 -------
@@ -14,6 +14,7 @@ Example
       --ra 06:47:16.38 --dec +41:57:55.1 --gain-cal J0646+4451 --epoch e3 --outdir .
 """
 import argparse
+import itertools
 import os
 import sys
 
@@ -23,7 +24,6 @@ from build_sb import make_sb, budget, parse_total, fmt, HIGH, SHORT, BAND_ORDER 
 
 STEP_MIN = 5
 N = 24 * 60 // STEP_MIN
-TOL = 3   # grid steps (15 min) of coverage we'll give up to pick a variant with more time on source
 
 
 def lst_str(i):
@@ -66,7 +66,8 @@ def main():
                     help='candidates in order of preference (3C138 is added as a last resort)')
     ap.add_argument('--min-el', type=float, help='default 30 (A/B) or 35 (C/D)')
     ap.add_argument('--max-el', type=float, default=80.0)
-    ap.add_argument('--max-sbs', type=int, default=3)
+    ap.add_argument('--max-sbs', type=int, default=2, choices=[1, 2, 3],
+                    help='group practice is at most 2 (early/late)')
     ap.add_argument('--min-gain', type=float, default=30,
                     help='minutes of extra start-LST coverage needed to justify another linked SB')
     ap.add_argument('--epoch', default='', help='epoch label for file names, e.g. e3')
@@ -148,49 +149,36 @@ def main():
                  f"Longest possible SB (ignoring the flux calibrator) is about {best:g} h. Shorten the SB, lower "
                  f"--min-el, or split it into separate SBs.")
 
-    # ---- greedy circular interval cover: fewest SBs, then most time on source ----
-    chosen, covered = [], [False] * N
-    full = [v for v in variants if all(v['mask'])]
-    if full:
-        best = max(full, key=lambda v: v['on_target'])
-        chosen.append((best, 0, N - 1))
-    else:
-        cand = [(v, s, e) for v in variants for s, e in runs(v['mask'])]
-        gap = next(i for i in range(N) if not union[i])
-        while True:
-            p = next(((gap + k) % N for k in range(1, N + 1) if union[(gap + k) % N] and not covered[(gap + k) % N]),
-                     None)
-            if p is None:
-                break
-            reach = []
-            for v, s, e in cand:
-                ln = (e - s) % N
-                if (p - s) % N <= ln:                     # run contains p
-                    reach.append(((e - p) % N, v, s, e))
-            far = max(r[0] for r in reach)
-            pick = max((r for r in reach if r[0] >= far - TOL), key=lambda r: (r[1]['on_target'], r[0]))
-            _, v, s, e = pick
-            chosen.append((v, s, e))
-            for k in range((e - s) % N + 1):
-                covered[(s + k) % N] = True
-    # drop SBs that add little: an extra linked SB is only worth it for >= --min-gain of new start LSTs
+    # ---- choose up to --max-sbs linked SBs: most start-LST coverage, then most time on source ----
     def cover(sel):
         return {(s + k) % N for _, s, e in sel for k in range((e - s) % N + 1)}
-    while len(chosen) > 1:
-        loss = [(len(cover(chosen)) - len(cover(chosen[:i] + chosen[i + 1:])), i) for i in range(len(chosen))]
-        lost, i = min(loss)
-        if lost * STEP_MIN >= a.min_gain:
-            break
-        chosen.pop(i)
-    chosen.sort(key=lambda c: (c[1] - (next(i for i in range(N) if not union[i]) if not all(union) else 0)) % N)
-    if len(chosen) > a.max_sbs:
-        print(f"WARNING: full coverage needs {len(chosen)} SBs; keeping the {a.max_sbs} with the widest ranges.")
-        chosen = sorted(chosen, key=lambda c: -((c[2] - c[1]) % N))[:a.max_sbs]
-        chosen.sort(key=lambda c: c[1])
+    cand = [(v, s, e) for v in variants for s, e in runs(v['mask'])]
+    best_by_n = {}
+    for n in range(1, a.max_sbs + 1):
+        best = None
+        for combo in itertools.combinations(cand, n):
+            score = (len(cover(combo)), sum(c[0]['on_target'] for c in combo))
+            if best is None or score > best[0]:
+                best = (score, list(combo))
+        best_by_n[n] = best
+    n_pick = 1
+    for n in range(2, a.max_sbs + 1):   # another linked SB only if it adds >= --min-gain of start LST
+        if (best_by_n[n][0][0] - best_by_n[n_pick][0][0]) * STEP_MIN >= a.min_gain:
+            n_pick = n
+    chosen = best_by_n[n_pick][1]
+    gap0 = 0 if all(union) else next(i for i in range(N) if not union[i])
+    chosen.sort(key=lambda c: (c[1] - gap0) % N)
+    if len(cover(chosen) & {i for i in range(N) if union[i]}) < sum(union):
+        print(f"NOTE: {a.max_sbs} SB(s) can't cover every usable start LST; see COVERAGE below.")
 
-    labels = {1: [''], 2: ['early', 'late'], 3: ['early', 'mid', 'late']}.get(len(chosen),
-                                                                            [f'p{i + 1}' for i in range(len(chosen))])
-    wraps = {1: [''], 2: ['CCW', 'CW'], 3: ['CCW', '', 'CW']}.get(len(chosen), [''] * len(chosen))
+    labels = {1: [''], 2: ['early', 'late'], 3: ['early', 'mid', 'late']}[len(chosen)]
+
+    def wrap_for(s, e):
+        """The OPT needs a wrap. Group convention: CCW while the target is rising, CW once it is setting,
+        judged at the middle of the SB for the middle of the start range."""
+        mid_start = (s + ((e - s) % N) / 2) * STEP_MIN / 60
+        ha = ((mid_start + L / 2) * 15 - tgt.ra.deg + 540) % 360 - 180
+        return 'CCW' if ha < 0 else 'CW'
     base = f"{''.join(SHORT[b] for b in reversed(bands))}_{a.target}" + (f"_{a.epoch}" if a.epoch else '')
     comments = a.comments.replace(';', ',').strip()
     if len(chosen) > 1:
@@ -199,7 +187,8 @@ def main():
     os.makedirs(a.outdir, exist_ok=True)
     print(f"\nPLAN: {len(chosen)} SB(s), {fmt(total)} each, target+gain cal kept within {min_el:g}-{a.max_el:g} deg")
     written = []
-    for (v, s, e), lab, wrap in zip(chosen, labels, wraps):
+    for (v, s, e), lab in zip(chosen, labels):
+        wrap = wrap_for(s, e)
         lst = '00:00:00-23:59:00' if (s, e) == (0, N - 1) else f"{lst_str(s)}-{lst_str(e)}"
         name = base + (f"_{lab}" if lab else '')
         r = make_sb(a.target, a.catalog, a.config, bands, total, a.gain_cal, v['flux'], lst, sb_name=name, wrap=wrap,
@@ -209,7 +198,7 @@ def main():
             f.write(r['text'])
         written.append(path)
         print(f"  {name:<34} LST start {lst}  flux {v['flux']} {'first' if v['first'] else 'last '}  "
-              f"wrap {wrap or '-':<3}  on target {fmt(r['on_target'])}")
+              f"wrap {wrap:<3}  on target {fmt(r['on_target'])}")
         budget(r, total, a.config, out=sys.stdout)
     n_union = sum(union)
     n_cov = len({(s + k) % N for _, s, e in chosen for k in range((e - s) % N + 1)} & {i for i in range(N) if union[i]})

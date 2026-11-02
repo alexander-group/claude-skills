@@ -129,7 +129,7 @@ def check(path, args, cals):
                     E(n, f"pointing-correction flag {p[7]!r} must be Y or N")
             if res == 'X-point' and kind == 'STD' and 'SetAtnGain' not in intent:
                 W(n, "X-point resource used for a non-setup STD scan")
-            stack[-1].append(dict(line=n, kind=kind, src=src, res=res, sec=secs(dur), intent=intent))
+            stack[-1].append(dict(line=n, kind=kind, src=src, res=res, sec=secs(dur), intent=intent, wrap=p[6]))
 
     if counts:
         errs.append(f"{len(counts)} LOOP-START without matching LOOP-END")
@@ -142,6 +142,8 @@ def check(path, args, cals):
         return errs, warns, config, 0
 
     # ---- structural rules on the expanded scan sequence ----
+    if not any(sc['wrap'] for sc in scans):
+        W(scans[0]["line"], "no antenna wrap set; group practice is CW or CCW on the setup scans")
     if 'SetAtnGain' not in scans[0]['intent']:
         W(scans[0]['line'], "first scan is not a setup (SetAtnGain) scan")
     cur, ready, pointed, setup_done = None, False, False, set()
@@ -227,8 +229,10 @@ def check(path, args, cals):
     total = sum(sc['sec'] for sc in scans)
     if args.expect:
         want = parse_total(args.expect)
-        if abs(total - want) > 0.1 * want:
-            E('-', f"total duration {fmt(total)} differs from requested {fmt(want)} by more than 10%")
+        if total != int(round(want)):
+            E('-', f"total duration {fmt(total)} is not exactly the requested {fmt(want)}")
+    if total % 1800:
+        W('-', f"total duration {fmt(total)} is not a whole or half hour (group SBs are 0.5 h multiples)")
     return errs, warns, config, total
 
 

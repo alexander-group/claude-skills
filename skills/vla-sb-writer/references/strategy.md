@@ -27,7 +27,7 @@ These are the most-used resources in about 200 group SBs.
 - All setup scans are on the first calibrator observed: the gain calibrator, or the flux calibrator when it is observed first.
 - The first scan absorbs the initial slew, which can take up to 9 min. The whole loop is about 10 min, as the guide recommends (10–12 min).
 - Each additional scan in the loop is 1 min.
-- Set the antenna wrap only on these scans. The guide says to leave the wrap blank when in doubt, because NRAO staff will set it.
+- Set the antenna wrap on these scans, and only these. The NRAO guide says it may be left blank, but the group always sets CW or CCW.
 
 ## Reference pointing (Ku, K, Ka)
 
@@ -86,7 +86,7 @@ The source is https://science.nrao.edu/facilities/vla/docs/manuals/obsguide/dyns
 
 "Any" is entered as 100, as in the group's C-band SBs (`w=100.0,p=45.0`). Use the self-calibration column (`--selfcal`) only when the target is bright enough to self-calibrate, roughly 0.1 Jy over a 1 GHz band.
 
-## Linked early / mid / late SBs
+## Linked early / late SBs
 
 The goal is to maximize the LST range in which *some* SB can start, and the time on source. Split into linked SBs when no single SB can start across the whole usable window, because:
 - the target or gain calibrator rises or sets partway through the window
@@ -94,13 +94,16 @@ The goal is to maximize the LST range in which *some* SB can start, and the time
 - the flux calibrator is up only at the start for some starts and only at the end for others; the variants then differ in whether the flux block is first or last, or in which 3C source they use
 
 Group conventions:
-- names end `_early`, `_mid`, `_late`
-- early uses the CCW wrap and late uses CW (wrap set on the setup scans only)
+- **at most two** SBs, with names ending `_early` and `_late`
+- each is the full requested length, because only one runs
+- a wrap is always set on the setup scans: CCW while the target is rising, CW once it is setting (usually early CCW, late CW)
 - identical scans apart from the calibrator order
 - comments say "Please observe only 1 of the linked SBs depending on LST start time."
 - ranges may overlap; that is fine and gives the operators more options
 
-Don't add a linked SB for less than about 30 min of extra start range. Each SB is extra work to check, and the gain is small.
+Don't add the second SB for less than about 30 min of extra start range. Each SB is extra work to check, and the gain is small.
+
+SB lengths are whole or half hours (1 h, 1.5 h, 2 h …). The generator pads or trims the first setup scan so the total comes out exactly right.
 
 ## LST start range
 
