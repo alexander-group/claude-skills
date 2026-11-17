@@ -167,7 +167,7 @@ def make_sb(target, catalog, config, bands, total, gain_cal, flux_cal, lst, sb_n
     def flux_block(sb, preceded_by_slew):
         sb.loop('BP_FLUX')
         if high:
-            sb.ptg('Xrefpnt_Fcal', flux_cal, max(PTG_FLUX, slew_scan_dur(gf_sep) + 150) if preceded_by_slew else 150)
+            sb.ptg('Xrefpnt_Fcal', flux_cal, max(PTG_FLUX, slew_scan_dur(gf_sep) + 150) if preceded_by_slew else PTG_GAIN)
         elif preceded_by_slew:
             sb.std('Slew_Fcal', flux_cal, res[bands[0]], slew_scan_dur(gf_sep), 'SetAtnGain,', ptgcorr=pc)
         for b in bands:
