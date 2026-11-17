@@ -93,13 +93,26 @@ Write a comment if the user gave none. One sentence in the group's style covers 
 
 Use `build_sb.py` directly only to override a planner choice, e.g. a specific LST range or flux calibrator the user asked for. It takes the same options plus `--flux-cal`, `--lst`, `--flux-first` and `--wrap` (required: CW or CCW). Hand-edit generated text only for things neither script can express, such as per-band gain calibrators or polarization calibration, and re-run the checker afterwards.
 
+**Hand edits must respect OPT's on-source minimums.** `DUR` includes the slew, so moving a scan to a different source changes its time on source even though its duration stays the same. OPT warns when time on source falls below:
+- 20 s for `CalGain` scans
+- 2m30s for `PTG` scans; pointing setup takes about 20 s even with no slew, so never use a `PTG` shorter than 3m0s, and use 3m30s by default
+
+When you give a band its own gain calibrator, lengthen every `CalGain` scan that follows a target scan to cover the slew plus at least 20 s, with margin. In one real case, a calibrator 9° from the target took about 44 s to slew to, so 1m0s scans got only about 16 s on source and 1m20s scans fixed it. Plan for about 5 s per degree of separation, plus 40 s. To keep the SB exactly the requested length, take the extra time from that band's target scans, then re-run the checker.
+
+**Long slews to a flux calibrator at the end of the SB.** The planner estimates slews from angular separation. OPT's slew time is set by the azimuth swing (40°/min), which is much larger when the target is setting in the west and the flux calibrator is rising in the north-east. In one real case, a target at RA 01h, Dec +13 with 3C147 last on the CW wrap needed up to 4m37s to slew, so the planner's 6m30s `Xrefpnt_Fcal` left only 1m52s on source. Before handing over an SB with the flux calibrator last:
+- estimate the worst-case azimuth swing across the start range
+- make the `PTG` at least the slew plus 2m30s, plus about 20 s of margin (7m30s in that case)
+- take the extra time from the target scans
+
+OPT also warns when a single slew takes more than 4m30s. Tell the user about this rather than silently accepting it. To avoid it, put the flux calibrator first, or choose a flux calibrator closer in azimuth to the target.
+
 ## 4. Check
 
 ```bash
 python scripts/check_sb.py <dir>/*.optSB --target <name> --catalog <catalog> --expect <total>
 ```
 
-Fix every ERROR. Read the WARNs; a weather limit stricter or looser than the NRAO table is one example. The checker can't see the OPT's source catalog, slew model or hardware database, so the user's OPT import and validation remain the final test.
+Fix every ERROR. Read the WARNs; a weather limit stricter or looser than the NRAO table is one example. The checker can't see the OPT's source catalog, slew model or hardware database, so the user's OPT import and validation remain the final test. In particular it does not model slews, so it can't catch scans whose time on source falls below OPT's minimums (see the hand-edit note in step 3). After any hand edit, check every scan that now starts with a new or longer slew.
 
 ## 5. Report
 
