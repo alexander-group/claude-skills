@@ -142,6 +142,48 @@ class SB:
         return sum(s * r for _, _, s, r in self.scans)
 
 
+VLA_LAT = 34.0784
+OPT_AZ_RATE, OPT_EL_RATE = 40.0, 20.0     # deg/min; reproduces the OPT's slew estimates
+PTG_OVERHEAD = 20                          # s the OPT takes from a PTG even with no slew
+SLEW_MARGIN = 30                           # s of spare time left in the setup loop after the initial slew
+
+
+def initial_slew(ra, dec, lst, az0, el0, wrap):
+    """OPT-style slew (s) from the SB's starting az/el to a source at this LST on the given wrap."""
+    import math
+    lat, d = math.radians(VLA_LAT), math.radians(dec)
+    ha = math.radians(((lst - ra + 12) % 24 - 12) * 15)
+    el = math.degrees(math.asin(math.sin(lat) * math.sin(d) + math.cos(lat) * math.cos(d) * math.cos(ha)))
+    az = math.degrees(math.atan2(-math.cos(d) * math.sin(ha),
+                                 math.sin(d) * math.cos(lat) - math.cos(d) * math.cos(ha) * math.sin(lat))) % 360
+    if wrap == 'CW' and az < 85:          # VLA azimuth runs -85..445; the wrap picks which side
+        az += 360
+    elif wrap == 'CCW' and az > 275:
+        az -= 360
+    elif wrap == '' and abs(az - 360 - az0) < abs(az - az0):
+        az -= 360
+    return max(abs(az - az0) / OPT_AZ_RATE, abs(el - el0) / OPT_EL_RATE) * 60
+
+
+def lst_starts(lst_field, step_min=5):
+    """Start LSTs (hours) every step_min across an LST field like '19:50:00-22:15:00, '."""
+    starts = []
+    for a, b in re.findall(r'(\d\d:\d\d)(?::\d\d)?-(\d\d:\d\d)(?::\d\d)?', lst_field):
+        t0, t1 = (int(x[:2]) + int(x[3:]) / 60 for x in (a, b))
+        t1 += 24 if t1 < t0 else 0
+        k = 0
+        while t0 + k * step_min / 60 <= t1 + 1e-9:
+            starts.append((t0 + k * step_min / 60) % 24)
+            k += 1
+    return starts
+
+
+def worst_initial_slew(ra, dec, lst_field, az0, el0, wrap):
+    """(seconds, LST) of the longest OPT-style initial slew over the LST start range, or None."""
+    starts = lst_starts(lst_field)
+    return max((initial_slew(ra, dec, t, az0, el0, wrap), t) for t in starts) if starts else None
+
+
 def make_sb(target, catalog, config, bands, total, gain_cal, flux_cal, lst, sb_name=None, wrap='',
             az_start=None, el_start=35.0, wind=None, api=None, selfcal=False, comments='', weights=None,
             flux_first=False):
@@ -156,13 +198,21 @@ def make_sb(target, catalog, config, bands, total, gain_cal, flux_cal, lst, sb_n
     w = {b: 1.0 for b in bands}
     w.update(weights or {})
     name = sb_name or f"{''.join(SHORT[b] for b in reversed(bands))}_{target}"   # group style: LSCX_<target>
-    az = az_start if az_start is not None else {'CCW': -85.0, 'CW': 445.0, '': 180.0}[wrap]
+    az = az_start if az_start is not None else {'CCW': 445.0, 'CW': -85.0, '': 180.0}[wrap]
     dw, da = weather_limits(bands, selfcal)
     wind = dw if wind is None else wind
     api = da if api is None else api
     gc, fc = cal_coord(gain_cal), cal_coord(flux_cal)
     gf_sep = gc.separation(fc).deg
     notes = []
+    # the setup loop must absorb the OPT's initial slew from the assumed starting azimuth
+    sc0 = fc if flux_first else gc
+    worst = worst_initial_slew(sc0.ra.hour, sc0.dec.deg, lst, az, el_start, wrap)
+    setup_total = SETUP_TOTAL
+    if worst and worst[0] + SLEW_MARGIN > SETUP_TOTAL:
+        setup_total = int(math.ceil((worst[0] + SLEW_MARGIN) / 10.0)) * 10
+        notes.append(f"setup loop lengthened to {fmt(setup_total)}: the initial slew from az {az:g} takes up to "
+                     f"{fmt(round(worst[0]))}")
 
     def flux_block(sb, preceded_by_slew):
         sb.loop('BP_FLUX')
@@ -185,7 +235,7 @@ def make_sb(target, catalog, config, bands, total, gain_cal, flux_cal, lst, sb_n
         setup_src = flux_cal if flux_first else gain_cal
         setup_res = (['X-point'] if high else []) + [res[b] for b in bands]
         sb.loop('Setup Scans')
-        first = max(SETUP_EACH, SETUP_TOTAL - SETUP_EACH * (len(setup_res) - 1))
+        first = max(SETUP_EACH, setup_total - SETUP_EACH * (len(setup_res) - 1))
         for i, r in enumerate(setup_res):
             label = 'Xref' if r == 'X-point' else SHORT[next(b for b in bands if res[b] == r)]
             sb.std(f'Dummy_{label}', setup_src, r, first + pad if i == 0 else SETUP_EACH, 'SetAtnGain,', wrap=wrap)
@@ -253,7 +303,7 @@ def make_sb(target, catalog, config, bands, total, gain_cal, flux_cal, lst, sb_n
     # hit the requested length exactly: the first setup scan (which absorbs the initial slew) takes up the rounding
     diff = int(round(total - sb.total()))
     if diff:
-        first0 = max(SETUP_EACH, SETUP_TOTAL - SETUP_EACH * (len(bands) + (1 if high else 0) - 1))
+        first0 = max(SETUP_EACH, setup_total - SETUP_EACH * (len(bands) + (1 if high else 0) - 1))
         if first0 + diff < SETUP_EACH:
             raise ValueError(f"cannot fit {fmt(total)} exactly (off by {diff} s); report this as a bug")
         sb = build(plan, pad=diff)
@@ -307,7 +357,7 @@ def main():
     ap.add_argument('--wrap', required=True, choices=['CW', 'CCW'],
                     help='antenna wrap for the setup scans (required by the OPT): CCW if the target is rising '
                          'during the SB, CW if setting')
-    ap.add_argument('--az-start', type=float, help='default -85 (CCW), 445 (CW), 180 (no wrap)')
+    ap.add_argument('--az-start', type=float, help='assumed starting azimuth; default 445 (CCW), -85 (CW), 180 (no wrap), as NRAO recommends')
     ap.add_argument('--el-start', type=float, default=35.0)
     ap.add_argument('--wind', type=float, help='override; default from the NRAO table for the strictest band')
     ap.add_argument('--api', type=float, help='override; default from the NRAO table for the strictest band')

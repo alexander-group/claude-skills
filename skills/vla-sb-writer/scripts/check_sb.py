@@ -14,7 +14,8 @@ import re
 import sys
 
 sys.path.insert(0, os.path.dirname(os.path.abspath(__file__)))
-from build_sb import RESOURCES, THREE_BIT, HIGH, parse_total, fmt, DATA, weather_limits  # noqa: E402
+from build_sb import (RESOURCES, THREE_BIT, HIGH, parse_total, fmt, DATA, weather_limits,  # noqa: E402
+                      worst_initial_slew, PTG_OVERHEAD)
 
 FIELDS = {'STD': 17, 'PTG': 14, 'IP': 14, 'LOOP-START': 6, 'LOOP-END': 2,
           'VERSION': 3, 'SRC-CAT': 3, 'HDWR-CAT': 3, 'SCHED-BLOCK': 15}
@@ -44,11 +45,62 @@ def known_cal_names():
     return names
 
 
+def cal_coords():
+    """{name: (ra_hours, dec_deg)} for every name form in the bundled calibrator list."""
+    import csv
+    out = {}
+    with open(os.path.join(DATA, 'calibrators.csv')) as f:
+        for row in csv.DictReader(f):
+            h, m, s = (float(v) for v in re.findall(r'[\d.]+', row['ra'])[:3])
+            d, dm, ds = (float(v) for v in re.findall(r'[\d.]+', row['dec'])[:3])
+            sign = -1 if row['dec'].strip().startswith('-') else 1
+            for k in (row['IAU FULL NAME'], row['IAU NAME'], row['ALT.NAME']):
+                if k:
+                    out[k] = (h + m / 60 + s / 3600, sign * (d + dm / 60 + ds / 3600))
+    return out
+
+
+def check_initial_slew(sb, scans, coords, E, W):
+    """The setup loop must absorb the slew from the SB's starting az/el; any overrun is taken from
+    the next scan (usually a PTG, which then falls under the OPT's 2m30s on-source minimum)."""
+    n, lst_field, az0, el0 = sb
+    setup = []
+    for sc in scans:
+        if sc['kind'] == 'STD' and 'SetAtnGain' in sc['intent'] and (not setup or sc['src'] == setup[0]['src']):
+            setup.append(sc)
+        else:
+            break
+    if not setup or len(setup) == len(scans):
+        return
+    nxt, src = scans[len(setup)], setup[0]['src']
+    pos = coords.get(src.split('=')[-1]) or coords.get(src)
+    if not pos or nxt['src'] != src:
+        return
+    wrap = next((sc['wrap'] for sc in setup if sc['wrap']), '')
+    worst = worst_initial_slew(*pos, lst_field, az0, el0, wrap)
+    if not worst:
+        return
+    slew, lst = worst
+    setup_s = sum(sc['sec'] for sc in setup)
+    spill = slew - setup_s
+    if spill <= 0:
+        return
+    need, overhead = (150, PTG_OVERHEAD) if nxt['kind'] in ('PTG', 'IP') else (20, 0)
+    on = nxt['sec'] - spill - overhead
+    msg = (f"initial slew to {src} from az {az0:g} ({wrap or 'no'} wrap) takes up to {fmt(round(slew))} "
+           f"(LST {int(lst):02d}:{round(lst % 1 * 60):02d}) but the setup scans last {fmt(setup_s)}; the overrun "
+           f"leaves ~{fmt(max(0, round(on)))} on source in the next scan")
+    if on < need:
+        E(nxt['line'], msg + f", below the OPT minimum of {fmt(need)}. Lengthen the first setup scan.")
+    else:
+        W(nxt['line'], msg)
+
+
 def check(path, args, cals):
     errs, warns = [], []
     E = lambda n, m: errs.append(f"line {n}: {m}")
     W = lambda n, m: warns.append(f"line {n}: {m}")
-    seen, config, weather = set(), None, None
+    seen, config, weather, sb = set(), None, None, None
     stack, counts = [[]], []        # for loop expansion
     try:
         lines = open(path, encoding='utf-8', errors='replace').read().splitlines()
@@ -75,8 +127,17 @@ def check(path, args, cals):
                 E(n, "SRC-CAT should be 'VLA, <catalog>'")
             elif args.catalog and p[1].split(',', 1)[1].strip() != args.catalog:
                 E(n, f"source catalog is {p[1].split(',', 1)[1].strip()!r}, expected {args.catalog!r}")
+        elif kind == 'HDWR-CAT':
+            if '[' in p[1] or 'My Catalog' in p[1]:
+                E(n, "HDWR-CAT still holds the OPT export placeholder text; use 'NRAO Defaults'")
+            elif p[1] != 'NRAO Defaults':
+                W(n, f"hardware catalog {p[1]!r}: the OPT will reject any custom catalog that doesn't exist")
         elif kind == 'SCHED-BLOCK':
             config = p[7]
+            try:
+                sb = (n, p[5], float(p[8]), float(p[9]))
+            except ValueError:
+                E(n, f"starting az/el {p[8]!r}/{p[9]!r} must be numbers")
             if config not in ('A', 'B', 'C', 'D', ''):
                 E(n, f"configuration {config!r} not A/B/C/D")
             lst = p[5] + ('' if p[5].endswith(',') else ',')
@@ -84,6 +145,8 @@ def check(path, args, cals):
                 E(n, f"LST start range {p[5]!r} should look like 04:25:00-11:45:00,")
             elif not re.fullmatch(r'(\d\d:\d\d:\d\d-\d\d:\d\d:\d\d, ?)+', lst):
                 W(n, f"LST start range {p[5]!r} has no seconds; the OPT exports HH:MM:SS")
+            if any(int(mm) % 5 for mm in re.findall(r'\d\d:(\d\d)', lst)):
+                E(n, f"LST start range {p[5]!r}: the OPT requires the minutes to be a multiple of 5")
             m = re.fullmatch(r'w=([\d.]+),p=([\d.]+)', p[12])
             if not m:
                 E(n, f"weather field {p[12]!r} should look like w=10.0,p=15.0")
@@ -142,6 +205,8 @@ def check(path, args, cals):
         return errs, warns, config, 0
 
     # ---- structural rules on the expanded scan sequence ----
+    if sb:
+        check_initial_slew(sb, scans, args.coords, E, W)
     if not any(sc['wrap'] for sc in scans):
         W(scans[0]["line"], "no antenna wrap set; group practice is CW or CCW on the setup scans")
     if 'SetAtnGain' not in scans[0]['intent']:
@@ -243,6 +308,7 @@ def main():
     ap.add_argument('--quiet', action='store_true', help='only print files with errors')
     args = ap.parse_args()
     cals = known_cal_names()
+    args.coords = cal_coords()
     bad = 0
     for f in args.files:
         errs, warns, config, total = check(f, args, cals)
