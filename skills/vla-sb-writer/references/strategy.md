@@ -25,7 +25,9 @@ These are the most-used resources in about 200 group SBs.
 
 - The first loop, `Setup Scans`, has one `SetAtnGain` scan per resource. Add `X-point` first if any band is Ku or above.
 - All setup scans are on the first calibrator observed: the gain calibrator, or the flux calibrator when it is observed first.
-- The first scan absorbs the initial slew, which can take up to 9 min. The whole loop is about 10 min, as the guide recommends (10–12 min).
+- The first scan absorbs the initial slew. The whole loop is about 10 min, as the guide recommends (10–12 min).
+- The OPT estimates the initial slew from the SCHED-BLOCK starting azimuth (field 8) to the first source on the requested wrap, at 40°/min in azimuth. VLA azimuth runs from −85° to 445°, so the swing can reach about 400° (≈10 min) or, at worst, 530° (≈13 min). This happens when the starting azimuth sits at the far end of the range from the source. Whatever the setup loop doesn't absorb is taken from the next scan. When that scan is a `PTG`, the OPT warns that its time on source is below 2m30s. In one real case (azimuth −85, CW wrap, J2355+4950 at azimuth ≈323°), the slew was 10m12s. That left a 9-min setup loop followed by a 3m0s `PTG` with only 1m39s on source. `check_sb.py` models this and reports an ERROR. Fix it by lengthening the first setup scan to cover the worst-case slew across the LST start range plus about 30 s. `build_sb.py` and `plan_sbs.py` do this automatically and print a note when they lengthen the setup loop.
+- Starting azimuth (SCHED-BLOCK field 8): NRAO recommends 445 when the first source is rising (CCW wrap) and −85 when it is setting (CW wrap). `build_sb.py` uses those defaults. Some older group SBs and examples have the opposite values. Those are not a model to copy.
 - Each additional scan in the loop is 1 min.
 - Set the antenna wrap on these scans, and only these. The NRAO guide says it may be left blank, but the group always sets CW or CCW.
 

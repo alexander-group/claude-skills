@@ -24,7 +24,7 @@ SCHED-BLOCK; <name>; Dynamic; 1; <start date>,<end date>; <LST start>-<LST end>,
 | 5 | `hh:mm:ss-hh:mm:ss, ` | LST *start* range. Several comma-separated ranges are allowed. |
 | 6 | `3.0` | always 3.0 in group SBs (a few have 0.0) |
 | 7 | `A`/`B`/`C`/`D` | array configuration |
-| 8 | az | initial azimuth for slew estimates: -85 = CCW wrap, 445 = CW wrap, 180 = no preference |
+| 8 | az | assumed starting azimuth for the OPT's slew estimates: 445 for a CCW-wrap SB (rising first source), -85 for a CW-wrap SB (setting first source), 180 for no preference. This is NRAO's recommendation (OPT manual, Dynamic LST Validation). It deliberately assumes the antennas start at the far end of the azimuth range, so the setup loop has to absorb a long initial slew (strategy.md, Start-up sequence). |
 | 9 | el | initial elevation, 35.0 |
 | 10–11 | `N; N` | sun/night avoidance flags (unused) |
 | 12 | `w=10.0,p=15.0` | max wind (m/s) and API phase rms (deg), taken from the NRAO table for the most demanding band (strategy.md). "Any" is entered as 100. |
