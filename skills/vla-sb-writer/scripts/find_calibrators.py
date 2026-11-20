@@ -208,8 +208,12 @@ def main():
     print(f"  transit elevation {transit_el(tgt):.0f} deg;  LST above 15: {window(tgt, 15)}  "
           f"above 30: {window(tgt, 30)}  above 80: {window(tgt, 80)}")
 
-    print(f"\nGAIN CALIBRATOR CANDIDATES within {radius:g} deg  (config {a.config}; codes P best, S ok, W/X avoid)")
-    hdr = f"{'name':<12} {'sep':>5} {'PC':>2} " + ' '.join(f"{b + ' code/Jy':>13}" for b in bands) + '  usable'
+    # Ku and above: the gain cal also takes the X-band reference pointing, so it needs P/S and >= 0.3 Jy at X
+    xpnt = high and 'X' not in bands
+    print(f"\nGAIN CALIBRATOR CANDIDATES within {radius:g} deg  (config {a.config}; P or S ok, W/X avoid; "
+          f"closest usable wins)")
+    hdr = f"{'name':<12} {'sep':>5} {'PC':>2} " + ' '.join(f"{b + ' code/Jy':>13}" for b in bands) \
+        + (f" {'Xpnt code/Jy':>13}" if xpnt else '') + '  usable'
     print(hdr); print('-' * len(hdr))
     near = cals.assign(sep=sep)[sep <= radius].sort_values('sep')
     shown = 0
@@ -218,10 +222,12 @@ def main():
         if not a.all and all(band_code(table, b, a.config)[0] == '-' for b in bands):
             continue
         cells, ok = [], True
-        for b in bands:
+        for b in bands + (['X'] if xpnt else []):
             code, flux = band_code(table, b, a.config)
             cells.append(f"{code}/{flux if flux is not None else '?':>5}")
             ok &= code in ('P', 'S')
+            if high and b == 'X':
+                ok &= flux is not None and flux >= 0.3
         print(f"{row['IAU FULL NAME']:<12} {row['sep']:5.1f} {row['PC']:>2} " + ' '.join(f"{c:>13}" for c in cells)
               + ('  YES' if ok else '  no'))
         shown += 1

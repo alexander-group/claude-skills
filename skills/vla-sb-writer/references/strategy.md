@@ -57,10 +57,9 @@ These are shorter than the NRAO guide's limits (roughly 8–10 min at C/X and 4�
 ## Calibrators
 
 **Gain (complex gain) calibrator**
-- Prefer code P, then S, in the requested configuration *and* every requested band. Avoid W, X, and `?`.
+- Code P or S in the requested configuration *and* every requested band; the group treats P and S as equally good. Avoid W, X, and `?`.
 - The calibrator list has no S, K, or Ka columns, so `find_calibrators.py` uses the worse of L/C for S and of K/Ku/Q for K and Ka.
-- Separation: within about 10° for Ku and above, about 15° for L to X. Closer is better at high frequency.
-- The guide says to prefer a strong P calibrator farther away over a weak nearby S one.
+- **Separation decides.** Among P/S candidates, take the closest one. Don't trade distance for a P code or a higher flux (the NRAO guide suggests a strong P farther away over a weak nearby S; the group does not follow that). Limits: within about 10° for Ku and above, about 15° for L to X.
 - Flux should be at least a few hundred mJy. One calibrator for all bands keeps the SB simple; the group almost always does this.
 - The same calibrator gets the X-band pointing, so it must be at least about 0.3 Jy and code P or S at X.
 

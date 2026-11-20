@@ -166,8 +166,8 @@ def main():
         if (best_by_n[n][0][0] - best_by_n[n_pick][0][0]) * STEP_MIN >= a.min_gain:
             n_pick = n
     chosen = best_by_n[n_pick][1]
-    gap0 = 0 if all(union) else next(i for i in range(N) if not union[i])
-    chosen.sort(key=lambda c: (c[1] - gap0) % N)
+    # early/late follow the target's pass (hour angle at the start), not clock LST, so ranges either side of 0h order correctly
+    chosen.sort(key=lambda c: (c[1] * STEP_MIN / 60 * 15 - tgt.ra.deg + 540) % 360 - 180)
     if len(cover(chosen) & {i for i in range(N) if union[i]}) < sum(union):
         print(f"NOTE: {a.max_sbs} SB(s) can't cover every usable start LST; see COVERAGE below.")
 

@@ -55,11 +55,12 @@ python scripts/find_calibrators.py --ra <RA> --dec <Dec> --config <cfg> --bands 
 ```
 
 Choose **one gain calibrator for all bands**:
-- coded P or S in this configuration for every band (the output marks these "usable YES")
-- as close as possible: within about 10° if any band is Ku or above, about 15° otherwise
+- coded P or S in this configuration for every band (the output marks these "usable YES"). P and S are equally acceptable.
+- **the closest usable candidate, above all else**: within about 10° if any band is Ku or above, about 15° otherwise
 - flux of at least a few hundred mJy
+- for Ku and above, also P or S at X band (at least about 0.3 Jy), because it takes the X-band reference pointing. Check `data/vla-calibrators-2.txt`; a calibrator with no X row can't be used.
 
-A strong P calibrator farther away beats a weak nearby S one. Also check the calibrator's elevation window against the target's. A calibrator whose window is shorter than the target's narrows the LST range, which works against goal 1. If two candidates are comparable, prefer the one whose visibility better matches the target's.
+Separation outranks code and flux: never pick a P calibrator, or a brighter one, over a closer S calibrator. In one real case (Ku, C config), J0019+2021 (P, 1.1 Jy, 7.2°) was wrong. J2340+2641 (S, 0.4 Jy, 4.0°) was right. The equally close J2358+1955 had no X-band entry, so it couldn't take the pointing. Only when two usable candidates are at about the same separation, prefer the one whose elevation window better matches the target's. If the closest calibrator narrows the start-LST range (e.g. it passes above 80°), still use it, and tell the user how much start range it costs.
 
 ## 3. Plan and write the SBs
 
